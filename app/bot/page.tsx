@@ -1,16 +1,15 @@
 "use client";
 
-import { useState } from "react";
-import Image from "next/image";
+import { useState, useRef, useEffect } from "react";
 import "./bot.css";
 
 interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
-  menuData?: MenuData; // OPTIONAL
+  menuData?: MenuData;
+  component?: "menu-cards" | "customization" | "cart-confirm" | "delivery-options" | "time-selection" | "payment-options" | "order-confirmed";
 }
-
 
 interface MenuItem {
   item_id: number;
@@ -18,6 +17,8 @@ interface MenuItem {
   price: number;
   image: string;
   is_chef_special: boolean;
+  is_customizable?: boolean;
+  description?: string;
 }
 
 interface MenuData {
@@ -32,11 +33,43 @@ interface MenuData {
   }>;
 }
 
-export default function Home() {
+// Helper function to get all items from menu data
+const getItemsFromMenuData = (menuData: MenuData): MenuItem[] => {
+  const items: MenuItem[] = [];
+  menuData.category_data.forEach(category => {
+    category.sub_category_data.forEach(subCategory => {
+      subCategory.item_data.forEach(item => {
+        items.push({
+          ...item,
+          is_customizable: true // All items are customizable
+        });
+      });
+    });
+  });
+  return items;
+};
+
+export default function FoodBot() {
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      id: "welcome",
+      role: "assistant",
+      text: "Hi 👋 I'm your AI food assistant!\n\nYou can:\n• Browse the menu\n• Say 'Show me burgers' or 'vegetarian options'\n• Try: 'I want a large burger with extra cheese'\n\nWhat are you craving?",
+    }
+  ]);
   const [isLoading, setIsLoading] = useState(false);
-  const [menuData, setMenuData] = useState<MenuData | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, isLoading]);
+
+  // Order flow state
+  const [showMenuCards, setShowMenuCards] = useState(false);
+
+
 
   const sendMessage = async () => {
     if (!message.trim()) return;
@@ -45,7 +78,6 @@ export default function Home() {
     setMessage("");
     setIsLoading(true);
 
-    // 1️⃣ push user message
     setMessages(prev => [
       ...prev,
       {
@@ -64,20 +96,27 @@ export default function Home() {
 
       const data = await res.json();
 
-      // 2️⃣ push assistant message
+      const hasMenuData = data.intent === "SHOW_MENU" && data.category_data?.length;
+
       setMessages(prev => [
         ...prev,
         {
           id: crypto.randomUUID(),
           role: "assistant",
           text: data.reply,
-          menuData:
-            data.intent === "SHOW_MENU" &&
-            data.category_data?.length
-              ? { category_data: data.category_data }
-              : undefined
+          menuData: hasMenuData ? { category_data: data.category_data } : undefined
         }
       ]);
+
+      // Hide sample menu cards when API returns menu data
+      if (hasMenuData) {
+        setShowMenuCards(false);
+      }
+
+      // Check if user provided address for delivery
+      if (userText.toLowerCase().includes("sector") || userText.toLowerCase().includes("address") || userText.toLowerCase().includes("noida")) {
+
+      }
     } catch (e) {
       setMessages(prev => [
         ...prev,
@@ -92,210 +131,115 @@ export default function Home() {
     }
   };
 
-
   const isDisabled = message.trim() === "" || isLoading;
 
   return (
-    <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900">
-
+    <div className="food-bot-container">
       {/* Header */}
-      <header className="flex items-center gap-3 header bg-white px-6 py-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#1c398e] text-white">
-          🤖
+      <header className="food-bot-header">
+        <div className="header-logo">
+          <span>🤖</span>
         </div>
-        <div>
-          <h1 className="text-lg font-semibold text-[#1c398e]">AI Food Bot</h1>
-          <p className="text-sm text-zinc-500">
-            Chat to customize & order
-          </p>
+        <div className="header-info">
+          <h1>AI Food Bot</h1>
+          <p>Chat to customize & order</p>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex flex-1 flex-col px-4 py-4">
-        <div className="mx-auto w-full max-w-2xl">
+      {/* Main Chat Area */}
+      <main className="food-bot-main">
+        <div className="chat-container">
           {/* Messages */}
-          <div className="space-y-4 item-menu">
-            {messages.map(msg => (
-              <div key={msg.id}>
-                {/* TEXT BUBBLE */}
-                <div
-                  className={`flex ${
-                    msg.role === "user" ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  <div
-                    className={`max-w-xs rounded-lg px-4 py-2 ${
-                      msg.role === "user"
-                        ? "bg-[#1c398e] text-white"
-                        : "bg-white text-zinc-900 shadow-sm"
-                    }`}
-                  >
-                    {msg.text}
-                  </div>
+          {messages.map(msg => (
+            <div key={msg.id}>
+              <div className={`message-wrapper ${msg.role}`}>
+                <div className={`message-bubble ${msg.role}`}>
+                  <div className="message-text">{msg.text}</div>
                 </div>
+              </div>
 
-                {/* ITEMS (ONLY IF PRESENT) */}
-                {msg.menuData && (
-                  <div className="mt-4 space-y-4">
-                    {msg.menuData.category_data.map(category => (
+              {/* Render API Menu Items as Cards */}
+              {msg.menuData && (
+                <div className="menu-section">
+                  <p className="menu-label">Here are some items for you:</p>
+                  <div className="menu-cards-grid">
+                    {getItemsFromMenuData(msg.menuData).map(item => (
                       <div
-                        key={category.category_id}
-                        className="rounded-xl bg-white p-4 shadow-sm"
+                        key={item.item_id}
+                        className="menu-card"
                       >
-                        <h3 className="text-lg font-semibold mb-3">
-                          {category.name}
-                        </h3>
-
-                        {category.sub_category_data.map(sub => (
-                          <div key={sub.menu_id} className="grid gap-3">
-                            {sub.item_data.map(item => (
-                              <div
-                                key={item.item_id}
-                                className="flex gap-4 rounded-lg border p-4"
-                              >
-                                <img
-                                  src={item.image}
-                                  className="h-20 w-20 rounded-lg object-cover"
-                                />
-
-                                <div className="flex-1">
-                                  <div className="flex justify-between">
-                                    <h4 className="font-semibold">
-                                      {item.name}
-                                    </h4>
-                                    <span className="font-semibold text-blue-600">
-                                      ₹{item.price}
-                                    </span>
-                                  </div>
-
-                                  {item.is_chef_special && (
-                                    <span className="mt-2 inline-block rounded-full bg-purple-100 px-2 py-1 text-xs text-purple-700">
-                                      ⭐ Chef Special
-                                    </span>
-                                  )}
-                                </div>
-
-                                <button className="rounded border px-3 text-sm text-blue-600">
-                                  ADD
-                                </button>
-                              </div>
-                            ))}
+                        <div className="menu-card-image">
+                          <img src={item.image} alt={item.name} />
+                        </div>
+                        <div className="menu-card-content">
+                          <div className="menu-card-header">
+                            <h4>{item.name}</h4>
+                            <span className="menu-card-price">₹{item.price.toFixed(2)}</span>
                           </div>
-                        ))}
+                          <p className="menu-card-description">Freshly prepared with premium ingredients</p>
+                          <div className="menu-card-badges">
+                            {item.is_chef_special && (
+                              <span className="badge hot">🔥 Hot</span>
+                            )}
+                            <span className="badge customizable">✨ Customizable</span>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
-            ))}
-            </div>
-
-
-          {/* Menu Display */}
-          {menuData && (
-            <div className="mt-6 space-y-4">
-              {menuData.category_data.map(category => (
-                <div key={category.category_id} className="rounded-xl bg-white p-4 shadow-sm item-menu">
-                  <h3 className="text-lg font-semibold text-zinc-900 mb-3">{category.name}</h3>
-                  {category.sub_category_data.map(subCategory => (
-                    <div key={subCategory.menu_id} className="mb-4">
-                      <h4 className="text-md font-medium text-zinc-700 mb-2">{subCategory.name}</h4>
-                      <div className="grid gap-3">
-                        {subCategory.item_data.map(item => (
-                            <div
-                              key={item.item_id}
-                              className="flex items-center gap-4 rounded-xl bg-white p-4 shadow-sm border"
-                            >
-                              {/* Item Image */}
-                              <img
-                                src={item.image}
-                                alt={item.name}
-                                className="h-20 w-20 rounded-lg object-cover"
-                              />
-
-                              {/* Item Info */}
-                              <div className="flex flex-1 flex-col">
-                                <div className="flex items-start justify-between">
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <h5 className="text-base font-semibold text-zinc-900">
-                                        {item.name}
-                                      </h5>
-
-                                    </div>
-
-                                    <p className="mt-1 text-sm text-zinc-500">
-                                      Freshly prepared with premium ingredients
-                                    </p>
-                                  </div>
-
-                                  {/* Price */}
-                                  <div className="text-base font-semibold text-blue-600">
-                                    ₹{item.price}
-                                  </div>
-                                </div>
-
-                                {/* Badges */}
-                                <div className="mt-2 flex items-center gap-2">
-                                  <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
-                                    🔥 250 kcal
-                                  </span>
-
-                                  {item.is_chef_special && (
-                                    <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs text-purple-700">
-                                      ⭐ Chef Special
-                                    </span>
-                                  )}
-
-                                </div>
-                              </div>
-
-                              {/* Add Button */}
-                              <button className="rounded-lg border border-blue-600 px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50">
-                                ADD
-                              </button>
-                            </div>
-                          ))}
-
-                      </div>
-                    </div>
-                  ))}
                 </div>
-              ))}
+              )}
+            </div>
+          ))}
+
+          {/* Loading Indicator */}
+          {isLoading && (
+            <div className="message-wrapper assistant">
+              <div className="message-bubble assistant">
+                <div className="typing-indicator">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
             </div>
           )}
+
+          {/* Sample Menu Cards Grid - shown initially */}
+          {showMenuCards && (
+            <div className="menu-section">
+              <p className="menu-label">Type "show menu" to see our items!</p>
+            </div>
+          )}
+
+          {/* Scroll anchor */}
+          <div ref={messagesEndRef} />
         </div>
       </main>
 
       {/* Bottom Input */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white px-4 py-3 shadow-top">
-        <div className="mx-auto flex max-w-2xl items-center gap-3">
+      <div className="food-bot-input-bar">
+        <div className="input-container">
           <input
             id="user-input"
+            className="user-input"
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && !isDisabled && sendMessage()}
-            placeholder="Try: Large burger with bacon..."
-            className="flex-1 rounded-full bg-zinc-100 px-4 py-3 text-sm outline-none
-                       focus:ring-2 focus:ring-[#7c7c83]"
+            placeholder="Type your message..."
           />
-
           <button
             onClick={sendMessage}
             disabled={isDisabled}
-            className={`flex h-12 w-12 items-center justify-center rounded-full text-white
-              ${isDisabled
-                ? "bg-zinc-400 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700"}
-            `}
+            className={`send-btn ${isDisabled ? 'disabled' : ''}`}
           >
-            ➤
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2Z" />
+            </svg>
           </button>
         </div>
       </div>
-
     </div>
   );
 }

@@ -2,7 +2,7 @@ export async function POST(req: Request) {
   const body = await req.json();
 
   const res = await fetch(
-    "https://tinderlike-clorinda-intermarginal.ngrok-free.dev/chat",
+    "http://0.0.0.0:8000/chat",
     {
       method: "POST",
       headers: {
