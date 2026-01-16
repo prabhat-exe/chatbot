@@ -662,3 +662,24 @@
     opacity: 1;
   }
 }
+
+.menu-card-image {
+  width: 100%;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(177, 177, 182);
+}
+
+.menu-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.menu-image.default-image {
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  opacity: 0.6;
+}

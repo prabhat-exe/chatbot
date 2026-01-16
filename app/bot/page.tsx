@@ -78,10 +78,17 @@ export default function FoodBot() {
     setMessage("");
     setIsLoading(true);
 
+    const generateId = () => {
+      if (typeof crypto !== "undefined" && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return Math.random().toString(36).substring(2) + Date.now().toString(36);
+    };
+
     setMessages(prev => [
       ...prev,
       {
-        id: crypto.randomUUID(),
+        id: generateId(),
         role: "user",
         text: userText
       }
@@ -93,7 +100,6 @@ export default function FoodBot() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: userText })
       });
-
       const data = await res.json();
 
       const hasMenuData = data.intent === "SHOW_MENU" && data.category_data?.length;
@@ -101,7 +107,7 @@ export default function FoodBot() {
       setMessages(prev => [
         ...prev,
         {
-          id: crypto.randomUUID(),
+          id: generateId(),
           role: "assistant",
           text: data.reply,
           menuData: hasMenuData ? { category_data: data.category_data } : undefined
@@ -121,7 +127,7 @@ export default function FoodBot() {
       setMessages(prev => [
         ...prev,
         {
-          id: crypto.randomUUID(),
+          id: generateId(),
           role: "assistant",
           text: "Sorry, something went wrong."
         }
@@ -164,12 +170,19 @@ export default function FoodBot() {
                   <p className="menu-label">Here are some items for you:</p>
                   <div className="menu-cards-grid">
                     {getItemsFromMenuData(msg.menuData).map(item => (
-                      <div
+                      <div 
                         key={item.item_id}
                         className="menu-card"
                       >
                         <div className="menu-card-image">
-                          <img src={item.image} alt={item.name} />
+                          <img
+                              src={item.image || "/images/no_preview.png"}
+                              alt={item.name}
+                              className={`menu-image ${!item.image ? "default-image" : ""}`}
+                              onError={(e) => {
+                                e.currentTarget.src = "/images/no_preview.png";
+                              }}
+                            />
                         </div>
                         <div className="menu-card-content">
                           <div className="menu-card-header">
@@ -181,7 +194,9 @@ export default function FoodBot() {
                             {item.is_chef_special && (
                               <span className="badge hot">🔥 Hot</span>
                             )}
+                            {item.is_customizable && (
                             <span className="badge customizable">✨ Customizable</span>
+                              )}
                           </div>
                         </div>
                       </div>
