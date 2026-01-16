@@ -11,6 +11,12 @@ interface ChatMessage {
   component?: "menu-cards" | "customization" | "cart-confirm" | "delivery-options" | "time-selection" | "payment-options" | "order-confirmed";
 }
 
+interface Variation {
+  variation_id: number;
+  variation_name: string;
+  variation_price: string;
+}
+
 interface MenuItem {
   item_id: number;
   name: string;
@@ -19,6 +25,8 @@ interface MenuItem {
   is_chef_special: boolean;
   is_customizable?: boolean;
   description?: string;
+  variation_status: number;
+  variations: Variation[];
 }
 
 interface MenuData {
@@ -68,6 +76,65 @@ export default function FoodBot() {
 
   // Order flow state
   const [showMenuCards, setShowMenuCards] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+
+  // Generate unique ID helper
+  const generateId = () => {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  };
+
+  // Handle item click - show selection message and variations
+  const handleItemClick = (item: MenuItem) => {
+    setSelectedItem(item);
+
+    // Create selection message
+    let selectionText = `✅ You selected ${item.name}!`;
+
+    // Check if item has variations (variation_status === 1)
+    if (item.variation_status === 1 && item.variations && item.variations.length > 0) {
+      selectionText += `\n\nThis item has ${item.variations.length} size options:`;
+      item.variations.forEach((v) => {
+        selectionText += `\n• ${v.variation_name}: ₹${v.variation_price}`;
+      });
+      selectionText += `\n\nPlease choose your preferred size below!`;
+    } else if (item.price === 0 || item.price === null) {
+      // Item has 0 price but variations not loaded - server may need restart
+      selectionText += `\n\nThis item has multiple size options. Please ask me about the sizes available!`;
+    } else {
+      selectionText += `\n\nPrice: ₹${item.price}\n\nWould you like to add this to your order?`;
+    }
+
+    // Add selection message to chat
+    setMessages(prev => [
+      ...prev,
+      {
+        id: generateId(),
+        role: "assistant",
+        text: selectionText,
+        menuData: item.variation_status === 1 && item.variations.length > 0
+          ? undefined
+          : undefined
+      }
+    ]);
+  };
+
+  // Handle variation selection
+  const handleVariationClick = (item: MenuItem, variation: Variation) => {
+    const confirmText = `✅ Great choice! You selected:\n\n${item.name} - ${variation.variation_name}\nPrice: ₹${variation.variation_price}\n\nWould you like to add this to your order?`;
+
+    setMessages(prev => [
+      ...prev,
+      {
+        id: generateId(),
+        role: "assistant",
+        text: confirmText
+      }
+    ]);
+    setSelectedItem(null);
+  };
 
 
 
@@ -77,13 +144,6 @@ export default function FoodBot() {
     const userText = message.trim();
     setMessage("");
     setIsLoading(true);
-
-    const generateId = () => {
-      if (typeof crypto !== "undefined" && crypto.randomUUID) {
-        return crypto.randomUUID();
-      }
-      return Math.random().toString(36).substring(2) + Date.now().toString(36);
-    };
 
     setMessages(prev => [
       ...prev,
@@ -167,37 +227,71 @@ export default function FoodBot() {
               {/* Render API Menu Items as Cards */}
               {msg.menuData && (
                 <div className="menu-section">
-                  <p className="menu-label">Here are some items for you:</p>
+                  <p className="menu-label">Here are some items for you (tap a size to select):</p>
                   <div className="menu-cards-grid">
                     {getItemsFromMenuData(msg.menuData).map(item => (
-                      <div 
+                      <div
                         key={item.item_id}
                         className="menu-card"
                       >
                         <div className="menu-card-image">
                           <img
-                              src={item.image || "/images/no_preview.png"}
-                              alt={item.name}
-                              className={`menu-image ${!item.image ? "default-image" : ""}`}
-                              onError={(e) => {
-                                e.currentTarget.src = "/images/no_preview.png";
-                              }}
-                            />
+                            src={item.image || "/images/no_preview.png"}
+                            alt={item.name}
+                            className={`menu-image ${!item.image ? "default-image" : ""}`}
+                            onError={(e) => {
+                              e.currentTarget.src = "/images/no_preview.png";
+                            }}
+                          />
                         </div>
                         <div className="menu-card-content">
                           <div className="menu-card-header">
                             <h4>{item.name}</h4>
-                            <span className="menu-card-price">₹{item.price.toFixed(2)}</span>
+                            {item.is_chef_special && (
+                              <span className="badge hot">🔥</span>
+                            )}
                           </div>
                           <p className="menu-card-description">Freshly prepared with premium ingredients</p>
-                          <div className="menu-card-badges">
-                            {item.is_chef_special && (
-                              <span className="badge hot">🔥 Hot</span>
-                            )}
-                            {item.is_customizable && (
-                            <span className="badge customizable">✨ Customizable</span>
-                              )}
-                          </div>
+
+                          {/* Show variations directly in the card */}
+                          {item.variation_status === 1 && item.variations && item.variations.length > 0 ? (
+                            <div className="item-variations">
+                              <p className="variations-title">Choose size:</p>
+                              <div className="variations-buttons">
+                                {item.variations.map(v => (
+                                  <button
+                                    key={v.variation_id}
+                                    className="variation-btn-inline"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleVariationClick(item, v);
+                                    }}
+                                  >
+                                    <span className="var-name">{v.variation_name}</span>
+                                    <span className="var-price">₹{v.variation_price}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          ) : item.price > 0 ? (
+                            <div className="item-price-section">
+                              <button
+                                className="add-item-btn"
+                                onClick={() => handleItemClick(item)}
+                              >
+                                Add to Order - ₹{item.price.toFixed(2)}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="item-price-section">
+                              <button
+                                className="add-item-btn"
+                                onClick={() => handleItemClick(item)}
+                              >
+                                Select Item
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}

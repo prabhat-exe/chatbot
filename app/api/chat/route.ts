@@ -42,7 +42,9 @@ export async function POST(req: Request) {
       name: p.product_name,
       price: p.price,
       image: p.image_url,
-      is_chef_special: p.is_chef_special
+      is_chef_special: p.is_chef_special,
+      variation_status: p.variation_status || 0,
+      variations: p.variations || []
     });
   });
 
@@ -52,3 +54,4 @@ export async function POST(req: Request) {
     category_data: Object.values(categoryMap)
   });
 }
+
