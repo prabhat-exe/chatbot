@@ -1,25 +1,31 @@
 export async function POST(req: Request) {
   const body = await req.json();
 
-  const res = await fetch(
-    "http://127.0.0.1:8000/chat",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        accept: "application/json"
-      },
-      body: JSON.stringify({
-        message: body.message
-      })
-    }
-  );
+  const res = await fetch("http://127.0.0.1:8000/chat", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      accept: "application/json"
+    },
+    body: JSON.stringify({ message: body.message })
+  });
 
   const apiData = await res.json();
   // console.log("API Data:", apiData);
-  // ---- TRANSFORM PRODUCTS → MENU FORMAT ----
-  const products = apiData?.data?.products || [];
+  
+  const products = apiData?.data?.products;
 
+  // CASE 1: NO PRODUCTS → PASS THROUGH
+  if (!products || products.length === 0) {
+    return Response.json({
+      intent: apiData.intent,
+      reply: apiData.response,
+      category_data: apiData.category_data || [],
+      categories: apiData.categories || []
+    });
+  }
+
+  //  CASE 2: PRODUCTS EXIST → BUILD MENU
   const categoryMap: any = {};
 
   products.forEach((p: any) => {
@@ -47,12 +53,12 @@ export async function POST(req: Request) {
       variations: p.variations || []
     });
   });
-  // console.log(Response);
+  const categoryData = Object.values(categoryMap);
+
   return Response.json({
     intent: apiData.intent,
     reply: apiData.response,
-    category_data: Object.values(categoryMap),
-    categories: apiData.categories || []
+    category_data: categoryData,
+    categories: apiData.categories || [],
   });
 }
-
