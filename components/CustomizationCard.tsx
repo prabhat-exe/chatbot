@@ -23,12 +23,10 @@
 
     interface Props {
     item: MenuItem;
-    onVariationClick: (item: MenuItem, variation: Variation) => void;
     }
 
     export default function CustomizationCard({
     item,
-    onVariationClick,
     }: Props) {
     const [selectedVariation, setSelectedVariation] = useState<Variation | null>(null);
     const [quantity, setQuantity] = useState(1);

@@ -234,7 +234,6 @@ export default function FoodBot() {
               {msg.component === "customization" && msg.selectedItem && (
                 <CustomizationCard
                   item={msg.selectedItem}
-                  onVariationClick={handleVariationClick}
                 />
               )}
 
