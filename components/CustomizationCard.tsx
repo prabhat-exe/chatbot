@@ -23,10 +23,26 @@
 
     interface Props {
     item: MenuItem;
+    onAddToCart: (orderItem: OrderItem) => void;
     }
+
+    interface OrderItem {
+        item_id: number;
+        name: string;
+        selected_variation: {
+            variation_id: number;
+            variation_name: string;
+            variation_price: number;
+        } | null;
+        unit_price: number;
+        quantity: number;
+        total_price: number;
+    }
+
 
     export default function CustomizationCard({
     item,
+    onAddToCart
     }: Props) {
     const [selectedVariation, setSelectedVariation] = useState<Variation | null>(null);
     const [quantity, setQuantity] = useState(1);
@@ -40,23 +56,7 @@
     : item.price;
     
     const totalPrice = basePrice * quantity;
-    
-    const orderItem = {
-        item_id: item.item_id,
-        name: item.name,
-
-        selected_variation: selectedVariation
-            ? {
-                variation_id: selectedVariation.variation_id,
-                variation_name: selectedVariation.variation_name,
-                variation_price: Number(selectedVariation.variation_price),
-            }
-            : null,
-
-        unit_price: basePrice,
-        quantity,
-        total_price: totalPrice,
-        };
+    console.log(item);
     return (
         <div className="flex justify-start">
         <div className="mt-4 bg-white rounded-2xl shadow-lg p-4 max-w-sm space-y-4">
@@ -186,27 +186,32 @@
                 Cancel
             </button>
             <button
-                disabled={item.variations.length > 0 && !selectedVariation}
-                onClick={() => {
-                    const orderItem = {
-                    item_id: item.item_id,
-                    name: item.name,
-                    size: selectedVariation?.variation_name ?? null,
-                    unit_price: basePrice,
-                    quantity,
-                    total_price: totalPrice,
-                    };
+            disabled={item.variations.length > 0 && !selectedVariation}
+            onClick={() => {
+                const orderItem: OrderItem = {
+                item_id: item.item_id,
+                name: item.name,
+                selected_variation: selectedVariation
+                    ? {
+                        variation_id: selectedVariation.variation_id,
+                        variation_name: selectedVariation.variation_name,
+                        variation_price: Number(selectedVariation.variation_price),
+                    }
+                    : null,
+                unit_price: basePrice,
+                quantity,
+                total_price: totalPrice,
+                };
 
-                    console.log("ORDER ITEM:", orderItem);
-                }}
-                className={`flex-1 h-11 rounded-xl font-semibold
-                    ${
-                    item.variations.length > 0 && !selectedVariation
-                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        : "bg-blue-900 hover:bg-blue-800 text-white"
-                    }`}
-                >
-                Add ₹{totalPrice.toFixed(2)}
+                onAddToCart(orderItem); // send to page.tsx
+            }}
+            className={`flex-1 h-11 rounded-xl font-semibold ${
+                item.variations.length > 0 && !selectedVariation
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                : "bg-blue-900 hover:bg-blue-800 text-white"
+            }`}
+            >
+            Add ₹{totalPrice.toFixed(2)}
             </button>
 
             </div>

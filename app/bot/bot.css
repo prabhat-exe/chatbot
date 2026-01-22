@@ -85,6 +85,7 @@
   background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%);
   color: white;
   border-bottom-right-radius: 6px;
+  margin-top: 10px;
 }
 
 .message-bubble.assistant {

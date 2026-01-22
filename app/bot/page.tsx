@@ -57,6 +57,20 @@ interface MenuData {
   }>;
 }
 
+interface OrderItem {
+  item_id: number;
+  name: string;
+  selected_variation: {
+    variation_id: number;
+    variation_name: string;
+    variation_price: number;
+  } | null;
+  unit_price: number;
+  quantity: number;
+  total_price: number;
+}
+
+
 // Helper function to get all items from menu data
 const getItemsFromMenuData = (menuData: MenuData): MenuItem[] => {
   const items: MenuItem[] = [];
@@ -84,6 +98,8 @@ export default function FoodBot() {
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [cart, setCart] = useState<OrderItem[]>([]);
+
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -175,7 +191,47 @@ export default function FoodBot() {
       setIsLoading(false);
     }
   };
+  const handleAddToCart = (orderItem: OrderItem) => {
+    setCart((prevCart) => {
+      // OPTIONAL: merge same item + same variation
+      const existingIndex = prevCart.findIndex(
+        (item) =>
+          item.item_id === orderItem.item_id &&
+          item.selected_variation?.variation_id ===
+            orderItem.selected_variation?.variation_id
+      );
 
+      if (existingIndex !== -1) {
+        // Merge quantities
+        const updatedCart = [...prevCart];
+        updatedCart[existingIndex] = {
+          ...updatedCart[existingIndex],
+          quantity:
+            updatedCart[existingIndex].quantity + orderItem.quantity,
+          total_price:
+            updatedCart[existingIndex].total_price +
+            orderItem.total_price,
+        };
+        return updatedCart;
+      }
+
+      // Otherwise add as new item
+      return [...prevCart, orderItem];
+    });
+
+    // Optional chatbot feedback
+    sendMessage(
+      `Added ${orderItem.name} ${
+        orderItem.selected_variation?.variation_name ?? ""
+      } x${orderItem.quantity} to cart`
+    );
+  }; 
+  useEffect(() => {
+    console.log("CART UPDATED:", cart);
+  }, [cart]);
+
+
+  console.log("MESSAGES:", messages);
   const isDisabled = message.trim() === "" || isLoading;
   return (
     <div className="food-bot-container">
@@ -234,6 +290,7 @@ export default function FoodBot() {
               {msg.component === "customization" && msg.selectedItem && (
                 <CustomizationCard
                   item={msg.selectedItem}
+                  onAddToCart={handleAddToCart}
                 />
               )}
 
@@ -257,6 +314,13 @@ export default function FoodBot() {
                               alt={item.name}
                               className="w-full h-full object-cover rounded-lg"
                             />
+                            <span data-slot="badge" className="inline-flex items-center justify-center rounded-md font-medium w-fit whitespace-nowrap shrink-0 [&amp;&gt;svg]:size-3 gap-1 [&amp;&gt;svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden border-transparent [a&amp;]:hover:bg-primary/90 absolute top-1 left-1 bg-emerald-500 text-white border-0 text-[10px] px-1 py-0"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-leaf w-2.5 h-2.5 mr-0.5">
+                              <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z">
+                              </path>
+                                <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12">
+                                </path>
+                                  </svg>Veg
+                            </span>
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-1">
