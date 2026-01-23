@@ -1,45 +1,13 @@
     "use client";
 
     import { useState } from "react";
-
-
-    interface Variation {
-    variation_id: number;
-    variation_name: string;
-    variation_price: string;
-    }
-
-    interface MenuItem {
-    item_id: number;
-    name: string;
-    image: string;
-    price: number;
-    is_chef_special?: boolean;
-    is_veg?: boolean;
-    variation_status?: number;
-    is_customizable?: boolean;
-    description?: string;
-    variations: Variation[];
-    }
+    import { Variation, MenuItem, OrderItem } from "@/types";
+    
 
     interface Props {
-    item: MenuItem;
-    onAddToCart: (orderItem: OrderItem) => void;
+      item: MenuItem;
+      onAddToCart: (orderItem: OrderItem) => void;
     }
-
-    interface OrderItem {
-        item_id: number;
-        name: string;
-        selected_variation: {
-            variation_id: number;
-            variation_name: string;
-            variation_price: number;
-        } | null;
-        unit_price: number;
-        quantity: number;
-        total_price: number;
-    }
-
 
     export default function CustomizationCard({
     item,
@@ -47,7 +15,24 @@
     }: Props) {
     const [selectedVariation, setSelectedVariation] = useState<Variation | null>(null);
     const [quantity, setQuantity] = useState(1);
+    const [selectedAddons, setSelectedAddons] = useState<typeof item.addons>([]);
     
+
+    const toggleAddon = (addon: (typeof item.addons)[number]) => {
+        setSelectedAddons(prev => {
+            const exists = prev.find(a => a.addon_id === addon.addon_id);
+            if (exists) {
+            return prev.filter(a => a.addon_id !== addon.addon_id);
+            }
+            return [...prev, addon];
+        });
+    };
+
+    const addonsPrice = selectedAddons.reduce(
+        (sum, addon) => sum + Number(addon.price),
+        0
+    );
+
     
     const basePrice =
     selectedVariation
@@ -56,7 +41,7 @@
     ? 0 // size must be selected
     : item.price;
     
-    const totalPrice = basePrice * quantity;
+    const totalPrice = (basePrice + addonsPrice) * quantity;
     // console.log(item);
     return (
         <div className="flex justify-start">
@@ -120,23 +105,38 @@
 
 
 
-            {/* Sauce */}
-            {/* <div>
+            {/* Add-ons */}
+            {item.addons.length >0 &&(
+            <div>
             <p className="font-semibold text-sm text-gray-700 mb-2">
-                Sauce (pick multiple)
+                Add-ons (pick multiple)
             </p>
+
             <div className="flex flex-wrap gap-2">
-                {["Alfredo", "Marinara", "Pesto", "Carbonara"].map(sauce => (
-                <button
-                    key={sauce}
-                    className="px-3 py-1.5 rounded-full text-sm font-medium
-                            bg-gray-100 text-gray-700 hover:bg-gray-200"
-                >
-                    {sauce}
-                </button>
-                ))}
+                {item.addons.map(addon => {
+                const isSelected = selectedAddons.some(
+                    a => a.addon_id === addon.addon_id
+                );
+
+                return (
+                    <button
+                    key={addon.addon_id}
+                    onClick={() => toggleAddon(addon)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all
+                        ${
+                        isSelected
+                            ? "bg-blue-900 text-white"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        }`}
+                    >
+                    {addon.name}
+                    <span className="text-xs ml-1">+₹{addon.price}</span>
+                    </button>
+                );
+                })}
             </div>
-            </div> */}
+            </div>)}
+
 
             {/* Extras */}
             {/* <div>
@@ -199,11 +199,16 @@
                         variation_price: Number(selectedVariation.variation_price),
                     }
                     : null,
-                unit_price: basePrice,
+                addons: selectedAddons.map(addon => ({
+                    addon_id: addon.addon_id,
+                    addon_name: addon.name,
+                    price: Number(addon.price),
+                })),
+                unit_price: basePrice + addonsPrice,
                 quantity,
                 total_price: totalPrice,
                 };
-
+                console.log(orderItem);
                 onAddToCart(orderItem); // send to page.tsx
             }}
             className={`flex-1 h-11 rounded-xl font-semibold ${

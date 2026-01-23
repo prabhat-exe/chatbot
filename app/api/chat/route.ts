@@ -11,9 +11,23 @@ export async function POST(req: Request) {
   });
 
   const apiData = await res.json();
-  // console.log("API Data:", apiData);
+  // console.log("API Data:", apiData.data);
   
   const products = apiData?.data?.products;
+  interface Product {
+    category_id: number;
+    category: string;
+    product_id: number;
+    product_name: string;
+    price: number;
+    image_url: string;
+    is_chef_special: boolean;
+    item_type: string;
+    variation_status: number;
+    variations: unknown[];
+    addons_status: number;
+    addons: unknown[];
+  }
 
   // CASE 1: NO PRODUCTS → PASS THROUGH
   if (!products || products.length === 0) {
@@ -24,34 +38,46 @@ export async function POST(req: Request) {
       categories: apiData.categories || []
     });
   }
+  interface CategoryData {
+    category_id: number;
+    name: string;
+    sub_category_data: Array<{
+      menu_id: number;
+      name: string;
+      item_data: unknown[];
+    }>;
+  }
 
   //  CASE 2: PRODUCTS EXIST → BUILD MENU
-  const categoryMap: any = {};
+  const categoryMap: Record<number, CategoryData> = {};
 
-  products.forEach((p: any) => {
-    if (!categoryMap[p.category_id]) {
-      categoryMap[p.category_id] = {
-        category_id: p.category_id,
-        name: p.category,
+  products.forEach((p: unknown) => {
+    const product = p as Product;
+    if (!categoryMap[product.category_id]) {
+      categoryMap[product.category_id] = {
+        category_id: product.category_id,
+        name: product.category,
         sub_category_data: [
           {
-            menu_id: p.category_id,
-            name: p.category,
+            menu_id: product.category_id,
+            name: product.category,
             item_data: []
           }
         ]
       };
     }
 
-    categoryMap[p.category_id].sub_category_data[0].item_data.push({
-      item_id: p.product_id,
-      name: p.product_name,
-      price: p.price,
-      image: p.image_url,
-      is_chef_special: p.is_chef_special,
-      is_veg: p.item_type === "vegetarian" ? true : false,
-      variation_status: p.variation_status || 0,
-      variations: p.variations || []
+    categoryMap[product.category_id].sub_category_data[0].item_data.push({
+      item_id: product.product_id,
+      name: product.product_name,
+      price: product.price,
+      image: product.image_url,
+      is_chef_special: product.is_chef_special,
+      is_veg: product.item_type === "vegetarian" ? true : false,
+      variation_status: product.variation_status || 0,
+      variations: product.variations || [],
+      addons_status: product.addons_status || 0,
+      addons: product.addons || []
     });
   });
   const categoryData = Object.values(categoryMap);
@@ -61,5 +87,6 @@ export async function POST(req: Request) {
     reply: apiData.response,
     category_data: categoryData,
     categories: apiData.categories || [],
+    // apiData: apiData
   });
 }
