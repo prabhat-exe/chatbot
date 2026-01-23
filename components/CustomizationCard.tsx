@@ -15,6 +15,7 @@
     image: string;
     price: number;
     is_chef_special?: boolean;
+    is_veg?: boolean;
     variation_status?: number;
     is_customizable?: boolean;
     description?: string;
@@ -56,7 +57,7 @@
     : item.price;
     
     const totalPrice = basePrice * quantity;
-    console.log(item);
+    // console.log(item);
     return (
         <div className="flex justify-start">
         <div className="mt-4 bg-white rounded-2xl shadow-lg p-4 max-w-sm space-y-4">

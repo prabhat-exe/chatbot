@@ -39,6 +39,7 @@ interface MenuItem {
   price: number;
   image: string;
   is_chef_special: boolean;
+  is_veg: boolean;
   is_customizable?: boolean;
   description?: string;
   variation_status: number;
@@ -227,11 +228,11 @@ export default function FoodBot() {
     );
   }; 
   useEffect(() => {
-    console.log("CART UPDATED:", cart);
-  }, [cart]);
+    // console.log("products:", messages);
+  }, [messages, cart]);
 
 
-  console.log("MESSAGES:", messages);
+  // console.log("MESSAGES:", messages);
   const isDisabled = message.trim() === "" || isLoading;
   return (
     <div className="food-bot-container">
@@ -314,13 +315,14 @@ export default function FoodBot() {
                               alt={item.name}
                               className="w-full h-full object-cover rounded-lg"
                             />
+                            {item.is_veg && (
                             <span data-slot="badge" className="inline-flex items-center justify-center rounded-md font-medium w-fit whitespace-nowrap shrink-0 [&amp;&gt;svg]:size-3 gap-1 [&amp;&gt;svg]:pointer-events-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-[color,box-shadow] overflow-hidden border-transparent [a&amp;]:hover:bg-primary/90 absolute top-1 left-1 bg-emerald-500 text-white border-0 text-[10px] px-1 py-0"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-leaf w-2.5 h-2.5 mr-0.5">
                               <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z">
                               </path>
                                 <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12">
                                 </path>
                                   </svg>Veg
-                            </span>
+                            </span>)}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-start justify-between gap-2 mb-1">

@@ -49,6 +49,7 @@ export async function POST(req: Request) {
       price: p.price,
       image: p.image_url,
       is_chef_special: p.is_chef_special,
+      is_veg: p.item_type === "vegetarian" ? true : false,
       variation_status: p.variation_status || 0,
       variations: p.variations || []
     });
