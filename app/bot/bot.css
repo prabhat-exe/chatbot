@@ -47,7 +47,89 @@
   margin: 2px 0 0;
 }
 
+.header-cart {
+  margin-left: auto;
+}
+
+.cart-button {
+  background: #1e3a8a;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cart-button:hover {
+  background: #1e40af;
+  transform: translateY(-1px);
+}
+
+.cart-button:active {
+  transform: translateY(0);
+}
+
+.back-button {
+  background: #6b7280;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.back-button:hover {
+  background: #4b5563;
+  transform: translateY(-1px);
+}
+
+.back-button:active {
+  transform: translateY(0);
+}
+
 /* Main Content */
+.food-bot-main {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.view-container {
+  height: 100%;
+  transition: all 0.3s ease-in-out;
+}
+
+.view-container.chat-active {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.view-container.cart-active {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Cart View */
+.cart-view {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 .food-bot-main {
   flex: 1;
   padding: 20px 16px 100px;

@@ -6,7 +6,7 @@
 
     interface Props {
       item: MenuItem;
-      onAddToCart: (orderItem: OrderItem) => void;
+      onAddToCart: (orderItem: OrderItem) => Promise<void>;
     }
 
     export default function CustomizationCard({
@@ -188,7 +188,7 @@
             </button>
             <button
             disabled={item.variations.length > 0 && !selectedVariation}
-            onClick={() => {
+            onClick={async () => {
                 const orderItem: OrderItem = {
                 item_id: item.item_id,
                 name: item.name,
@@ -209,7 +209,7 @@
                 total_price: totalPrice,
                 };
                 console.log(orderItem);
-                onAddToCart(orderItem); // send to page.tsx
+                await onAddToCart(orderItem); // send to page.tsx
             }}
             className={`flex-1 h-11 rounded-xl font-semibold ${
                 item.variations.length > 0 && !selectedVariation

@@ -12,7 +12,7 @@ interface Props {
   isLoading: boolean;
   onCategoryClick: (categoryName: string) => void;
   onItemClick: (item: MenuItem) => void;
-  onAddToCart: (orderItem: OrderItem) => void;
+  onAddToCart: (orderItem: OrderItem) => Promise<void>;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
 }
 
