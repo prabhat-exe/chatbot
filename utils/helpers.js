@@ -1,8 +1,6 @@
-import { MenuData, MenuItem } from "@/types";
-
 // Helper function to get all items from menu data
-export const getItemsFromMenuData = (menuData: MenuData): MenuItem[] => {
-  const items: MenuItem[] = [];
+export const getItemsFromMenuData = (menuData) => {
+  const items = [];
   menuData.category_data.forEach((category) => {
     category.sub_category_data.forEach((subCategory) => {
       subCategory.item_data.forEach((item) => {

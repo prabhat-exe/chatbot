@@ -1,4 +1,4 @@
-export async function POST(req: Request) {
+export async function POST(req) {
   const body = await req.json();
 
   const res = await fetch("http://127.0.0.1:8000/chat", {
@@ -12,22 +12,8 @@ export async function POST(req: Request) {
 
   const apiData = await res.json();
   // console.log("API Data:", apiData.data);
-  
+
   const products = apiData?.data?.products;
-  interface Product {
-    category_id: number;
-    category: string;
-    product_id: number;
-    product_name: string;
-    price: number;
-    image_url: string;
-    is_chef_special: boolean;
-    item_type: string;
-    variation_status: number;
-    variations: unknown[];
-    addons_status: number;
-    addons: unknown[];
-  }
 
   // CASE 1: NO PRODUCTS → PASS THROUGH
   if (!products || products.length === 0) {
@@ -38,21 +24,12 @@ export async function POST(req: Request) {
       categories: apiData.categories || []
     });
   }
-  interface CategoryData {
-    category_id: number;
-    name: string;
-    sub_category_data: Array<{
-      menu_id: number;
-      name: string;
-      item_data: unknown[];
-    }>;
-  }
 
   //  CASE 2: PRODUCTS EXIST → BUILD MENU
-  const categoryMap: Record<number, CategoryData> = {};
+  const categoryMap = {};
 
-  products.forEach((p: unknown) => {
-    const product = p as Product;
+  products.forEach((p) => {
+    const product = p;
     if (!categoryMap[product.category_id]) {
       categoryMap[product.category_id] = {
         category_id: product.category_id,

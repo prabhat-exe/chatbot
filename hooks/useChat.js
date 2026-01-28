@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from "react";
-import { ChatMessage } from "@/types";
-import { sendChatMessage } from "@/utils/api";
+import { sendChatMessage } from "../utils/api";
 
 export function useChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
+  const [messages, setMessages] = useState([
     {
       id: "welcome",
       role: "assistant",
@@ -11,7 +10,7 @@ export function useChat() {
     },
   ]);
   const [isLoading, setIsLoading] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef(null);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -26,7 +25,7 @@ export function useChat() {
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
   };
 
-  const sendMessage = async (userText: string) => {
+  const sendMessage = async (userText) => {
     if (!userText.trim()) return;
 
     setIsLoading(true);
@@ -70,7 +69,7 @@ export function useChat() {
     }
   };
 
-  const addAssistantMessage = (message: Omit<ChatMessage, "id" | "role">) => {
+  const addAssistantMessage = (message) => {
     setMessages((prev) => [
       ...prev,
       {

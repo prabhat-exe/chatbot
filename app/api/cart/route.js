@@ -1,14 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { OrderItem } from '@/types';
-
 // POST /api/cart/add - Add item to cart
-export async function POST(request: NextRequest) {
+export async function POST(request) {
   try {
-    const orderItem: OrderItem = await request.json();
+    const orderItem = await request.json();
 
     // Validate the order item structure
     if (!orderItem.item_id || !orderItem.name || orderItem.quantity < 1) {
-      return NextResponse.json(
+      return Response.json(
         { error: 'Invalid order item data' },
         { status: 400 }
       );
@@ -34,7 +31,7 @@ export async function POST(request: NextRequest) {
     // });
 
     // Return success response
-    return NextResponse.json({
+    return Response.json({
       success: true,
       message: 'Item added to cart successfully',
       orderItem: orderItem
@@ -42,7 +39,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Cart API error:', error);
-    return NextResponse.json(
+    return Response.json(
       { error: 'Failed to add item to cart' },
       { status: 500 }
     );
@@ -52,7 +49,7 @@ export async function POST(request: NextRequest) {
 // GET /api/cart - Get current cart (placeholder for future)
 export async function GET() {
   // TODO: Fetch cart from backend when implemented
-  return NextResponse.json({
+  return Response.json({
     cart: [],
     message: 'Cart retrieval not yet implemented'
   });

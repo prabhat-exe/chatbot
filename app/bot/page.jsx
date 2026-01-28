@@ -2,12 +2,11 @@
 
 import "./bot.css";
 import { useState, useEffect } from "react";
-import { useCart } from "@/hooks/useCart";
-import { useChat } from "@/hooks/useChat";
-import ChatContainer from "@/components/chat/ChatContainer";
-import ChatInput from "@/components/chat/ChatInput";
-import CartSummary from "@/components/CartSummary";
-import { MenuItem, OrderItem } from "@/types";
+import { useCart } from "../../hooks/useCart";
+import { useChat } from "../../hooks/useChat";
+import ChatContainer from "../../components/chat/ChatContainer";
+import ChatInput from "../../components/chat/ChatInput";
+import CartSummary from "../../components/CartSummary";
 
 export default function FoodBot() {
   const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotalItems, getTotalPrice } = useCart();
@@ -16,7 +15,7 @@ export default function FoodBot() {
 
   // Handle ESC key to go back to chat
   useEffect(() => {
-    const handleKeyPress = (event: KeyboardEvent) => {
+    const handleKeyPress = (event) => {
       if (event.key === 'Escape' && showCart) {
         setShowCart(false);
         setTimeout(() => {
@@ -31,7 +30,7 @@ export default function FoodBot() {
 
   // Handle page reload/leave warning
   useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+    const handleBeforeUnload = (event) => {
       if (cart.length > 0 || messages.length > 1) { // messages.length > 1 to exclude the welcome message
         event.preventDefault();
         event.returnValue = 'You will lose your conversation and items in cart. Are you sure you want to leave?';
@@ -43,12 +42,12 @@ export default function FoodBot() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [cart.length, messages.length]);
 
-  const handleCategoryClick = (categoryName: string) => {
+  const handleCategoryClick = (categoryName) => {
     const userText = `Show me ${categoryName}`;
     sendMessage(userText);
   };
 
-  const handleItemClick = (item: MenuItem) => {
+  const handleItemClick = (item) => {
     addAssistantMessage({
       text: "",
       component: "customization",
@@ -56,9 +55,8 @@ export default function FoodBot() {
     });
   };
 
-  const handleAddToCart = async (orderItem: OrderItem) => {
+  const handleAddToCart = async (orderItem) => {
     await addToCart(orderItem);
-    sendMessage(`Added ${orderItem.name} ${orderItem.selected_variation?.variation_name ?? ""} x${orderItem.quantity} to cart`);
   };
 
   return (
@@ -84,7 +82,7 @@ export default function FoodBot() {
               }}
               className="back-button"
             >
-              ← Back
+              Go Back
             </button>
           ) : (
             <button

@@ -1,4 +1,4 @@
-export async function sendChatMessage(message: string) {
+export async function sendChatMessage(message) {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -12,7 +12,7 @@ export async function sendChatMessage(message: string) {
   return res.json();
 }
 
-export async function addToCart(orderItem: any) {
+export async function addToCart(orderItem) {
   const res = await fetch("/api/cart", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

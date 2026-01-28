@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { OrderItem } from "@/types";
-import { addToCart as apiAddToCart } from "@/utils/api";
+import { addToCart as apiAddToCart } from "../utils/api";
 
 export function useCart() {
-  const [cart, setCart] = useState<OrderItem[]>([]);
+  const [cart, setCart] = useState([]);
 
   // Function to sync cart item with backend
-  const syncCartWithBackend = async (orderItem: OrderItem) => {
+  const syncCartWithBackend = async (orderItem) => {
     try {
       const result = await apiAddToCart(orderItem);
       console.log('Cart synced with backend:', result);
@@ -18,7 +17,7 @@ export function useCart() {
     }
   };
 
-  const addToCart = async (orderItem: OrderItem) => {
+  const addToCart = async (orderItem) => {
     console.log('🛒 Adding item to cart:', {
       item_id: orderItem.item_id,
       name: orderItem.name,
@@ -75,7 +74,7 @@ export function useCart() {
     });
   };
 
-  const removeFromCart = (itemId: number, variationId?: number) => {
+  const removeFromCart = (itemId, variationId) => {
     setCart((prev) => prev.filter(
       (item) =>
         !(item.item_id === itemId &&
@@ -83,7 +82,7 @@ export function useCart() {
     ));
   };
 
-  const updateQuantity = async (itemId: number, variationId: number | undefined, newQuantity: number) => {
+  const updateQuantity = async (itemId, variationId, newQuantity) => {
     if (newQuantity <= 0) {
       // Remove item if quantity is 0 or less
       removeFromCart(itemId, variationId);
