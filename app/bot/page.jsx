@@ -12,6 +12,9 @@ export default function FoodBot() {
   const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotalItems, getTotalPrice } = useCart();
   const { messages, isLoading, sendMessage, addAssistantMessage, messagesEndRef } = useChat();
   const [showCart, setShowCart] = useState(false);
+  const [cartGlow, setCartGlow] = useState(false);
+  const [cartButtonRef, setCartButtonRef] = useState(null);
+  const [floatingItem, setFloatingItem] = useState(null);
 
   // Handle ESC key to go back to chat
   useEffect(() => {
@@ -55,8 +58,34 @@ export default function FoodBot() {
     });
   };
 
-  const handleAddToCart = async (orderItem) => {
+  const handleAddToCart = async (orderItem, buttonRect) => {
     await addToCart(orderItem);
+    
+    // Trigger cart glow effect
+    setCartGlow(true);
+    setTimeout(() => setCartGlow(false), 1000);
+    
+    // Trigger floating animation if button position and cart button are available
+    if (buttonRect && cartButtonRef) {
+      const cartRect = cartButtonRef.getBoundingClientRect();
+      const startX = buttonRect.left + buttonRect.width / 2;
+      const startY = buttonRect.top + buttonRect.height / 2;
+      const endX = cartRect.left + cartRect.width / 2;
+      const endY = cartRect.top + cartRect.height / 2;
+      
+      setFloatingItem({
+        id: Date.now(),
+        startX,
+        startY,
+        endX,
+        endY,
+        item: orderItem
+      });
+      
+      // Remove floating item after animation
+      setTimeout(() => setFloatingItem(null), 800);
+    }
+    
   };
 
   return (
@@ -86,8 +115,9 @@ export default function FoodBot() {
             </button>
           ) : (
             <button
+              ref={setCartButtonRef}
               onClick={() => setShowCart(!showCart)}
-              className="cart-button"
+              className={`cart-button ${cartGlow ? 'cart-glow' : ''}`}
             >
               🛒 Cart {getTotalItems() > 0 && `(${getTotalItems()})`}
             </button>
@@ -128,6 +158,26 @@ export default function FoodBot() {
 
       {/* Bottom Input */}
       <ChatInput onSend={sendMessage} disabled={isLoading} />
+      
+      {/* Floating Item Animation */}
+      {floatingItem && (
+        <div
+          key={floatingItem.id}
+          className="floating-item"
+          style={{
+            '--start-x': `${floatingItem.startX}px`,
+            '--start-y': `${floatingItem.startY}px`,
+            '--end-x': `${floatingItem.endX}px`,
+            '--end-y': `${floatingItem.endY}px`,
+          }}
+        >
+          <img
+            src={floatingItem.item.image || "/images/no_preview.png"}
+            alt={floatingItem.item.name}
+            className="w-8 h-8 rounded-full object-cover"
+          />
+        </div>
+      )}
     </div>
   );
 }

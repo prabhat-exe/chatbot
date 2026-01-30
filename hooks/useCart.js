@@ -33,16 +33,13 @@ export function useCart() {
 
     // Then update local state
     setCart((prevCart) => {
-      // Check for existing item with same id and variation
+      // Check for existing item with same cart_key (includes item_id, variation, AND addons)
       const existingIndex = prevCart.findIndex(
-        (item) =>
-          item.item_id === orderItem.item_id &&
-          item.selected_variation?.variation_id ===
-            orderItem.selected_variation?.variation_id
+        (item) => item.cart_key === orderItem.cart_key
       );
 
       if (existingIndex !== -1) {
-        // Merge quantities
+        // Merge quantities only if EXACT same item (including addons)
         const updatedCart = [...prevCart];
         updatedCart[existingIndex] = {
           ...updatedCart[existingIndex],
@@ -55,7 +52,7 @@ export function useCart() {
         return updatedCart;
       }
 
-      // Otherwise add as new item
+      // Otherwise add as new item (different variation or addons = different cart item)
       console.log('➕ Added new item to cart');
       return [...prevCart, orderItem];
     });
@@ -74,27 +71,20 @@ export function useCart() {
     });
   };
 
-  const removeFromCart = (itemId, variationId) => {
-    setCart((prev) => prev.filter(
-      (item) =>
-        !(item.item_id === itemId &&
-          (!variationId || item.selected_variation?.variation_id === variationId))
-    ));
+  const removeFromCart = (cartKey) => {
+    setCart((prev) => prev.filter((item) => item.cart_key !== cartKey));
   };
 
-  const updateQuantity = async (itemId, variationId, newQuantity) => {
+  const updateQuantity = async (cartKey, newQuantity) => {
     if (newQuantity <= 0) {
       // Remove item if quantity is 0 or less
-      removeFromCart(itemId, variationId);
+      removeFromCart(cartKey);
       return;
     }
 
     setCart((prevCart) => {
       const updatedCart = prevCart.map((item) => {
-        if (
-          item.item_id === itemId &&
-          (!variationId || item.selected_variation?.variation_id === variationId)
-        ) {
+        if (item.cart_key === cartKey) {
           const updatedItem = {
             ...item,
             quantity: newQuantity,

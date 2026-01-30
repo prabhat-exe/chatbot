@@ -64,6 +64,6 @@ export async function POST(req) {
     reply: apiData.response,
     category_data: categoryData,
     categories: apiData.categories || [],
-    // apiData: apiData
+    apiData: apiData
   });
 }

@@ -72,6 +72,50 @@
   transform: translateY(0);
 }
 
+.cart-glow {
+  animation: cartGlow 1s ease-out;
+  box-shadow: 0 0 20px rgba(30, 58, 138, 0.8);
+}
+
+@keyframes cartGlow {
+  0% {
+    box-shadow: 0 0 0 rgba(30, 58, 138, 0.8);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(30, 58, 138, 0.8);
+    transform: scale(1.05);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(30, 58, 138, 0.8);
+    transform: scale(1);
+  }
+}
+
+.floating-item {
+  position: fixed;
+  left: var(--start-x);
+  top: var(--start-y);
+  z-index: 1000;
+  pointer-events: none;
+  animation: floatToCart 0.8s ease-out forwards;
+}
+
+@keyframes floatToCart {
+  0% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc(var(--end-x) - var(--start-x)), calc(var(--end-y) - var(--start-y))) scale(1.2) rotate(10deg);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(calc(var(--end-x) - var(--start-x)), calc(var(--end-y) - var(--start-y))) scale(0.8) rotate(-5deg);
+    opacity: 0;
+  }
+}
+
 .back-button {
   background: #6b7280;
   color: white;

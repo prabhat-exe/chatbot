@@ -39,16 +39,16 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                         }}
                         className="text-sm text-red-500 hover:text-red-600 font-medium px-3 py-1 rounded-lg hover:bg-red-50 transition"
                     >
-                        Empty Cart
+                        Clear Cart
                     </button>
                 )}
             </div>
 
             {/* Items */}
             <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1">
-                {cart.map((item, index) => (
+                {cart.map((item) => (
                     <div
-                        key={`${item.item_id}-${item.selected_variation?.variation_id || 'no-var'}-${index}`}
+                        key={item.cart_key}
                         className="bg-gray-50 rounded-xl p-3 border border-gray-100 hover:shadow-sm transition"
                     >
                         <div className="flex justify-between items-start">
@@ -74,8 +74,7 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                                             <button
                                                 onClick={() =>
                                                     onUpdateQuantity(
-                                                        item.item_id,
-                                                        item.selected_variation?.variation_id,
+                                                        item.cart_key,
                                                         item.quantity - 1
                                                     )
                                                 }
@@ -90,8 +89,7 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                                             <button
                                                 onClick={() =>
                                                     onUpdateQuantity(
-                                                        item.item_id,
-                                                        item.selected_variation?.variation_id,
+                                                        item.cart_key,
                                                         item.quantity + 1
                                                     )
                                                 }
@@ -104,7 +102,7 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                                         {onRemoveItem && (
                                             <button
                                                 onClick={() =>
-                                                    onRemoveItem(item.item_id, item.selected_variation?.variation_id)
+                                                    onRemoveItem(item.cart_key)
                                                 }
                                                 className="text-xs text-red-500 hover:text-red-600 font-medium"
                                             >

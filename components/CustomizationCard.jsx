@@ -10,6 +10,18 @@ export default function CustomizationCard({
     const [quantity, setQuantity] = useState(1);
     const [selectedAddons, setSelectedAddons] = useState([]);
 
+    const generateCartKey = (item) => {
+    const variationId = item.selected_variation?.variation_id ?? "no-variation";
+
+    const addonIds = item.addons
+        .map(a => a.addon_id)
+        .sort((a, b) => a - b) // VERY IMPORTANT (order independent)
+        .join(",");
+
+    return `${item.item_id}|${variationId}|${addonIds || "no-addons"}`;
+    };
+
+
     const toggleAddon = (addon) => {
         setSelectedAddons(prev => {
             const exists = prev.find(a => a.addon_id === addon.addon_id);
@@ -179,28 +191,40 @@ export default function CustomizationCard({
                     </button>
                     <button
                         disabled={item.variations.length > 0 && !selectedVariation}
-                        onClick={async () => {
+                        onClick={async (e) => {
+                            const buttonRect = e.currentTarget.getBoundingClientRect();
                             const orderItem = {
+                            cart_key: generateCartKey({
                                 item_id: item.item_id,
-                                name: item.name,
-                                selected_variation: selectedVariation
-                                    ? {
-                                        variation_id: selectedVariation.variation_id,
-                                        variation_name: selectedVariation.variation_name,
-                                        variation_price: Number(selectedVariation.variation_price),
-                                    }
-                                    : null,
-                                addons: selectedAddons.map(addon => ({
-                                    addon_id: addon.addon_id,
-                                    addon_name: addon.name,
-                                    price: Number(addon.price),
-                                })),
-                                unit_price: basePrice + addonsPrice,
-                                quantity,
-                                total_price: totalPrice,
+                                selected_variation: selectedVariation,
+                                addons: selectedAddons
+                            }),
+
+                            item_id: item.item_id,
+                            name: item.name,
+                            image: item.image,
+
+                            selected_variation: selectedVariation
+                                ? {
+                                    variation_id: selectedVariation.variation_id,
+                                    variation_name: selectedVariation.variation_name,
+                                    variation_price: Number(selectedVariation.variation_price),
+                                }
+                                : null,
+
+                            addons: selectedAddons.map(addon => ({
+                                addon_id: addon.addon_id,
+                                addon_name: addon.name,
+                                price: Number(addon.price),
+                            })),
+
+                            unit_price: basePrice + addonsPrice,
+                            quantity,
+                            total_price: totalPrice,
                             };
+
                             console.log(orderItem);
-                            await onAddToCart(orderItem); // send to page.jsx
+                            await onAddToCart(orderItem, buttonRect); // send to page.jsx with button position
                         }}
                         className={`flex-1 h-11 rounded-xl font-semibold ${
                             item.variations.length > 0 && !selectedVariation
