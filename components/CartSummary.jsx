@@ -1,6 +1,6 @@
 "use client";
 
-export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onClose, onEmptyCart }) {
+export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onClose, onEmptyCart, getTotalTax, getTaxBreakdown }) {
     if (cart.length === 0) {
         return (
             <div className="cart-empty text-gray-500">
@@ -10,7 +10,9 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
     }
 
     const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-    const totalPrice = cart.reduce((sum, item) => sum + item.total_price, 0);
+    const subtotal = cart.reduce((sum, item) => sum + item.total_price, 0);
+    const totalTax = getTotalTax ? getTotalTax() : 0;
+    const taxBreakdown = getTaxBreakdown ? getTaxBreakdown() : {};
 
     return (
         <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-gray-100 p-5 relative text-gray-800">
@@ -65,6 +67,18 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                                     <p className="text-xs text-gray-500 mt-1">
                                         Add-ons: {item.addons.map(a => `${a.addon_name}`).join(', ')}
                                     </p>
+                                )}
+
+                                {/* Tax Display */}
+                                {item.tax_details?.taxes && item.tax_details.taxes.length > 0 && (
+                                    <div className="text-xs text-gray-400 mt-1">
+                                        {item.tax_details.taxes.map((tax, idx) => (
+                                            <span key={idx}>
+                                                {tax.name} {tax.percentage}%
+                                                {idx < item.tax_details.taxes.length - 1 ? ' • ' : ''}
+                                            </span>
+                                        ))}
+                                    </div>
                                 )}
 
                                 {/* Qty Controls */}
@@ -134,9 +148,28 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
 
             {/* Total Section */}
             <div className="mt-5 pt-4 border-t border-gray-200">
-                <div className="flex justify-between items-center text-lg font-bold">
+                {/* Subtotal */}
+                <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                    <span>Subtotal</span>
+                    <span>₹{(subtotal - totalTax).toFixed(2)}</span>
+                </div>
+
+                {/* Tax Breakdown */}
+                {Object.keys(taxBreakdown).length > 0 && (
+                    <>
+                        {Object.entries(taxBreakdown).map(([taxName, taxData]) => (
+                            <div key={taxName} className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                                <span>{taxName} ({taxData.percentage}%)</span>
+                                <span>₹{taxData.amount.toFixed(2)}</span>
+                            </div>
+                        ))}
+                    </>
+                )}
+
+                {/* Total */}
+                <div className="flex justify-between items-center text-lg font-bold mt-3 pt-2 border-t border-gray-200">
                     <span>Total</span>
-                    <span className="text-green-600">₹{totalPrice.toFixed(2)}</span>
+                    <span className="text-green-600">₹{subtotal.toFixed(2)}</span>
                 </div>
             </div>
 

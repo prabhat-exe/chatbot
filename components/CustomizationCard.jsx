@@ -203,6 +203,7 @@ export default function CustomizationCard({
                             item_id: item.item_id,
                             name: item.name,
                             image: item.image,
+                            category_id: item.category_id, // Add category_id for tax calculation
 
                             selected_variation: selectedVariation
                                 ? {

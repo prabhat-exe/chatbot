@@ -38,7 +38,9 @@ export async function POST(req) {
           {
             menu_id: product.category_id,
             name: product.category,
-            item_data: []
+            item_data: [],
+            tax_class: product.tax_class || "none",
+            map_tax_class : product.map_tax_class || "none",
           }
         ]
       };

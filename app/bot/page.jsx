@@ -9,12 +9,21 @@ import ChatInput from "../../components/chat/ChatInput";
 import CartSummary from "../../components/CartSummary";
 
 export default function FoodBot() {
-  const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotalItems, getTotalPrice } = useCart();
+  const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotalItems, getTotalPrice, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
   const { messages, isLoading, sendMessage, addAssistantMessage, messagesEndRef } = useChat();
   const [showCart, setShowCart] = useState(false);
   const [cartGlow, setCartGlow] = useState(false);
   const [cartButtonRef, setCartButtonRef] = useState(null);
   const [floatingItem, setFloatingItem] = useState(null);
+
+  // Update tax info when menu data arrives
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.menuData?.category_data) {
+      setTaxInfo(lastMessage.menuData.category_data[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages.length]);
 
   // Handle ESC key to go back to chat
   useEffect(() => {
@@ -141,6 +150,8 @@ export default function FoodBot() {
                   }, 100);
                 }}
                 onEmptyCart={clearCart}
+                getTotalTax={getTotalTax}
+                getTaxBreakdown={getTaxBreakdown}
               />
             </div>
           ) : (
