@@ -76,8 +76,20 @@ export default function ItemDetailsModal({
         final_price: unitPrice,
     };
 
+    // Only calculate tax if the product has a valid tax class with actual tax rates
     if (taxInfo?.map_tax_class && unitPrice > 0) {
-        taxDetails = calculateTaxFromSubCategory(unitPrice, taxInfo.map_tax_class);
+        // Check if any tax mapping has a non-zero tax rate
+        const hasValidTaxRate = taxInfo.map_tax_class.some(
+            (taxMapping) => taxMapping.tax_rate?.[0]?.tax_amount > 0
+        );
+
+        if (hasValidTaxRate) {
+            taxDetails = calculateTaxFromSubCategory(unitPrice, taxInfo.map_tax_class);
+            // Filter out any taxes with 0 amount
+            taxDetails.taxes = taxDetails.taxes.filter(tax => tax.amount > 0);
+            // Recalculate total_tax after filtering
+            taxDetails.total_tax = taxDetails.taxes.reduce((sum, tax) => sum + tax.amount, 0);
+        }
     }
 
     const handleAddToCart = async (e) => {
@@ -248,8 +260,8 @@ export default function ItemDetailsModal({
                         disabled={item.variations?.length > 0 && !selectedVariation}
                         onClick={handleAddToCart}
                         className={`item-modal-btn add ${item.variations?.length > 0 && !selectedVariation
-                                ? "disabled"
-                                : ""
+                            ? "disabled"
+                            : ""
                             }`}
                     >
                         Add to Cart • ₹{totalPrice.toFixed(2)}
