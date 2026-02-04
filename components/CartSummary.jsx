@@ -69,15 +69,26 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                                     </p>
                                 )}
 
-                                {/* Tax Display */}
+                                {/* Tax Details - Matching ItemDetailsModal style */}
                                 {item.tax_details?.taxes && item.tax_details.taxes.length > 0 && (
-                                    <div className="text-xs text-gray-400 mt-1">
-                                        {item.tax_details.taxes.map((tax, idx) => (
-                                            <span key={idx}>
-                                                {tax.name} {tax.percentage}%
-                                                {idx < item.tax_details.taxes.length - 1 ? ' • ' : ''}
-                                            </span>
-                                        ))}
+                                    <div className="mt-2 p-2 bg-gray-100 rounded-lg">
+                                        <p className="text-xs font-medium text-gray-600 mb-1">Tax Details (per unit)</p>
+                                        <div className="space-y-1">
+                                            <div className="flex justify-between text-xs text-gray-500">
+                                                <span>Base Price</span>
+                                                <span>₹{(item.unit_price - item.tax_details.total_tax).toFixed(2)}</span>
+                                            </div>
+                                            {item.tax_details.taxes.map((tax, idx) => (
+                                                <div key={idx} className="flex justify-between text-xs text-gray-500">
+                                                    <span>{tax.name} ({tax.percentage}%)</span>
+                                                    <span>₹{tax.amount.toFixed(2)}</span>
+                                                </div>
+                                            ))}
+                                            <div className="flex justify-between text-xs font-medium text-gray-700 pt-1 border-t border-gray-200">
+                                                <span>Unit Price (incl. tax)</span>
+                                                <span>₹{item.unit_price.toFixed(2)}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
 

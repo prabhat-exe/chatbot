@@ -7,6 +7,7 @@ import { useChat } from "../../hooks/useChat";
 import ChatContainer from "../../components/chat/ChatContainer";
 import ChatInput from "../../components/chat/ChatInput";
 import CartSummary from "../../components/CartSummary";
+import ItemDetailsModal from "../../components/ItemDetailsModal";
 
 export default function FoodBot() {
   const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotalItems, getTotalPrice, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
@@ -15,12 +16,26 @@ export default function FoodBot() {
   const [cartGlow, setCartGlow] = useState(false);
   const [cartButtonRef, setCartButtonRef] = useState(null);
   const [floatingItem, setFloatingItem] = useState(null);
+  const [selectedItemForModal, setSelectedItemForModal] = useState(null);
+  const [taxInfoMap, setTaxInfoMapLocal] = useState({});
 
   // Update tax info when menu data arrives
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
     if (lastMessage?.menuData?.category_data) {
       setTaxInfo(lastMessage.menuData.category_data[0]);
+      // Also store tax info locally for modal preview
+      const newTaxInfoMap = {};
+      lastMessage.menuData.category_data.forEach((category) => {
+        category.sub_category_data?.forEach((subCategory) => {
+          const categoryId = subCategory.menu_id;
+          newTaxInfoMap[categoryId] = {
+            tax_class: subCategory.tax_class,
+            map_tax_class: subCategory.map_tax_class,
+          };
+        });
+      });
+      setTaxInfoMapLocal(prev => ({ ...prev, ...newTaxInfoMap }));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
@@ -60,20 +75,21 @@ export default function FoodBot() {
   };
 
   const handleItemClick = (item) => {
-    addAssistantMessage({
-      text: "",
-      component: "customization",
-      selectedItem: item,
-    });
+    // Open item details modal instead of adding to chat
+    setSelectedItemForModal(item);
+  };
+
+  const handleCloseModal = () => {
+    setSelectedItemForModal(null);
   };
 
   const handleAddToCart = async (orderItem, buttonRect) => {
     await addToCart(orderItem);
-    
+
     // Trigger cart glow effect
     setCartGlow(true);
     setTimeout(() => setCartGlow(false), 1000);
-    
+
     // Trigger floating animation if button position and cart button are available
     if (buttonRect && cartButtonRef) {
       const cartRect = cartButtonRef.getBoundingClientRect();
@@ -81,7 +97,7 @@ export default function FoodBot() {
       const startY = buttonRect.top + buttonRect.height / 2;
       const endX = cartRect.left + cartRect.width / 2;
       const endY = cartRect.top + cartRect.height / 2;
-      
+
       setFloatingItem({
         id: Date.now(),
         startX,
@@ -90,11 +106,11 @@ export default function FoodBot() {
         endY,
         item: orderItem
       });
-      
+
       // Remove floating item after animation
       setTimeout(() => setFloatingItem(null), 800);
     }
-    
+
   };
 
   return (
@@ -169,7 +185,7 @@ export default function FoodBot() {
 
       {/* Bottom Input */}
       <ChatInput onSend={sendMessage} disabled={isLoading} />
-      
+
       {/* Floating Item Animation */}
       {floatingItem && (
         <div
@@ -188,6 +204,16 @@ export default function FoodBot() {
             className="w-8 h-8 rounded-full object-cover"
           />
         </div>
+      )}
+
+      {/* Item Details Modal */}
+      {selectedItemForModal && (
+        <ItemDetailsModal
+          item={selectedItemForModal}
+          onAddToCart={handleAddToCart}
+          onClose={handleCloseModal}
+          taxInfoMap={taxInfoMap}
+        />
       )}
     </div>
   );
