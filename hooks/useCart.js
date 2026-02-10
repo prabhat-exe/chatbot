@@ -10,7 +10,7 @@ export function useCart() {
   const syncCartWithBackend = async (orderItem) => {
     try {
       const result = await apiAddToCart(orderItem);
-      console.log('Cart synced with backend:', result);
+      // console.log('Cart synced with backend:', result);
       return result;
     } catch (error) {
       console.error('Backend sync failed:', error);
@@ -54,16 +54,16 @@ export function useCart() {
       tax_details: taxDetails,
     };
 
-    console.log('🛒 Adding item to cart:', {
-      item_id: itemWithTax.item_id,
-      name: itemWithTax.name,
-      variation: itemWithTax.selected_variation ? `${itemWithTax.selected_variation.variation_name} (+₹${itemWithTax.selected_variation.variation_price})` : 'None',
-      addons: itemWithTax.addons.length > 0 ? itemWithTax.addons.map(a => `${a.addon_name} (+₹${a.price})`) : 'None',
-      quantity: itemWithTax.quantity,
-      unit_price: itemWithTax.unit_price,
-      total_price: itemWithTax.total_price,
-      tax_details: taxDetails,
-    });
+    // console.log('🛒 Adding item to cart:', {
+    //   item_id: itemWithTax.item_id,
+    //   name: itemWithTax.name,
+    //   variation: itemWithTax.selected_variation ? `${itemWithTax.selected_variation.variation_name} (+₹${itemWithTax.selected_variation.variation_price})` : 'None',
+    //   addons: itemWithTax.addons.length > 0 ? itemWithTax.addons.map(a => `${a.addon_name} (+₹${a.price})`) : 'None',
+    //   quantity: itemWithTax.quantity,
+    //   unit_price: itemWithTax.unit_price,
+    //   total_price: itemWithTax.total_price,
+    //   tax_details: taxDetails,
+    // });
 
     // First sync with backend (future-prepared)
     await syncCartWithBackend(itemWithTax);
@@ -85,27 +85,27 @@ export function useCart() {
           total_price:
             updatedCart[existingIndex].total_price + itemWithTax.total_price,
         };
-        console.log('📦 Merged with existing item. New quantity:', updatedCart[existingIndex].quantity);
+        // console.log('📦 Merged with existing item. New quantity:', updatedCart[existingIndex].quantity);
         return updatedCart;
       }
 
       // Otherwise add as new item (different variation or addons = different cart item)
-      console.log('➕ Added new item to cart');
+      // console.log('➕ Added new item to cart');
       return [...prevCart, itemWithTax];
     });
 
     // Log current cart state
     setCart((currentCart) => {
-      console.log('🛍️ Current cart contents:', currentCart.map(item => ({
-        name: item.name,
-        variation: item.selected_variation?.variation_name || 'None',
-        addons: item.addons.length,
-        quantity: item.quantity,
-        total: item.total_price,
-        tax: item.tax_details?.total_tax || 0
-      })));
-      console.log('💰 Cart total:', currentCart.reduce((sum, item) => sum + item.total_price, 0));
-      console.log('🏛️ Cart tax total:', currentCart.reduce((sum, item) => sum + (item.tax_details?.total_tax || 0) * item.quantity, 0));
+      // console.log('🛍️ Current cart contents:', currentCart.map(item => ({
+      //   name: item.name,
+      //   variation: item.selected_variation?.variation_name || 'None',
+      //   addons: item.addons.length,
+      //   quantity: item.quantity,
+      //   total: item.total_price,
+      //   tax: item.tax_details?.total_tax || 0
+      // })));
+      // console.log('💰 Cart total:', currentCart.reduce((sum, item) => sum + item.total_price, 0));
+      // console.log('🏛️ Cart tax total:', currentCart.reduce((sum, item) => sum + (item.tax_details?.total_tax || 0) * item.quantity, 0));
       return currentCart;
     });
   };

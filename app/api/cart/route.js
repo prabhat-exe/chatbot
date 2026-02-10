@@ -12,16 +12,17 @@ export async function POST(request) {
     }
 
     // For now, just log the cart addition (backend integration pending)
-    console.log('Cart item added:', {
-      item_id: orderItem.item_id,
-      name: orderItem.name,
-      selected_variation: orderItem.selected_variation,
-      addons: orderItem.addons,
-      quantity: orderItem.quantity,
-      unit_price: orderItem.unit_price,
-      total_price: orderItem.total_price,
-      timestamp: new Date().toISOString()
-    });
+    // console.log('Cart item added:', {
+    //   item_id: orderItem.item_id,
+    //   name: orderItem.name,
+    //   selected_variation: orderItem.selected_variation,
+    //   addons: orderItem.addons,
+    //   quantity: orderItem.quantity,
+    //   unit_price: orderItem.unit_price,
+    //   total_price: orderItem.total_price,
+    //   taxes: orderItem.tax_details,
+    //   timestamp: new Date().toISOString()
+    // });
 
     // TODO: Send to actual backend when ready
     // const backendResponse = await fetch('http://127.0.0.1:8000/cart/add', {

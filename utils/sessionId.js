@@ -34,7 +34,7 @@ export function getSessionId() {
     if (!sessionId) {
         sessionId = generateUUID();
         sessionStorage.setItem(SESSION_ID_KEY, sessionId);
-        console.log('[Session] Created new session:', sessionId);
+        // console.log('[Session] Created new session:', sessionId);
     }
 
     return sessionId;
@@ -46,6 +46,6 @@ export function getSessionId() {
 export function clearSession() {
     if (typeof window !== 'undefined') {
         sessionStorage.removeItem(SESSION_ID_KEY);
-        console.log('[Session] Session cleared');
+        // console.log('[Session] Session cleared');
     }
 }

@@ -52,7 +52,7 @@ export const calculateTaxFromSubCategory = (price, map_tax_class) => {
 
   taxDetails.total_tax = parseFloat(taxDetails.total_tax.toFixed(2));
   taxDetails.final_price = parseFloat((price).toFixed(2)); // Already included in price for inclusive tax
-
+  // console.log('Calculated tax details:', taxDetails);
   return taxDetails;
 };
 

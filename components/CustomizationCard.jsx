@@ -224,7 +224,7 @@ export default function CustomizationCard({
                             total_price: totalPrice,
                             };
 
-                            console.log(orderItem);
+                            // console.log(orderItem);
                             await onAddToCart(orderItem, buttonRect); // send to page.jsx with button position
                         }}
                         className={`flex-1 h-11 rounded-xl font-semibold ${
