@@ -36,7 +36,9 @@ export function useCart() {
     // Calculate tax details if category tax info exists
     const categoryId = orderItem.category_id;
     const taxInfo = taxInfoMap[categoryId];
-    
+    console.log("taxInfo",taxInfo,taxInfoMap,categoryId)
+    // return;
+
     let taxDetails = {
       taxes: [],
       total_tax: 0,

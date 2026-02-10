@@ -22,6 +22,7 @@ export default function FoodBot() {
   // Update tax info when menu data arrives
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
+      
     if (lastMessage?.menuData?.category_data) {
       setTaxInfo(lastMessage.menuData.category_data[0]);
       // Also store tax info locally for modal preview

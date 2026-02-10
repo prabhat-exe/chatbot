@@ -1,0 +1,15 @@
+services:
+  frontend:
+    build: .
+    container_name: hero-ai-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://hero-ai-app:8000
+    networks:
+      - hero-net
+    restart: unless-stopped
+
+networks:
+  hero-net:
+    external: true

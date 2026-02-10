@@ -120,7 +120,8 @@ export default function ItemDetailsModal({
             quantity,
             total_price: totalPrice,
         };
-
+        console.log("_orderItem",orderItem)
+        
         await onAddToCart(orderItem, buttonRect);
         onClose();
     };

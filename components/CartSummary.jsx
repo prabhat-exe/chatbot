@@ -14,6 +14,7 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
     const totalTax = getTotalTax ? getTotalTax() : 0;
     const taxBreakdown = getTaxBreakdown ? getTaxBreakdown() : {};
 
+    console.log("cart",cart)
     return (
         <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-gray-100 p-5 relative text-gray-800">
 
