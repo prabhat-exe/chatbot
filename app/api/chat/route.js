@@ -1,5 +1,6 @@
 export async function POST(req) {
   const body = await req.json();
+  const sessionId = body.session_id || 'anonymous';
 
   const res = await fetch("http://127.0.0.1:8000/chat", {
     method: "POST",
@@ -7,7 +8,10 @@ export async function POST(req) {
       "Content-Type": "application/json",
       accept: "application/json"
     },
-    body: JSON.stringify({ message: body.message })
+    body: JSON.stringify({
+      message: body.message,
+      session_id: sessionId
+    })
   });
 
   const apiData = await res.json();
@@ -40,7 +44,7 @@ export async function POST(req) {
             name: product.category,
             item_data: [],
             tax_class: product.tax_class || "none",
-            map_tax_class : product.map_tax_class || "none",
+            map_tax_class: product.map_tax_class || "none",
           }
         ]
       };

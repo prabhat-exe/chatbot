@@ -1,8 +1,12 @@
+import { getSessionId } from "./sessionId";
+
 export async function sendChatMessage(message) {
+  const sessionId = getSessionId();
+
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, session_id: sessionId }),
   });
 
   if (!res.ok) {
