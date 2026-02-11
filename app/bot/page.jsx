@@ -22,12 +22,12 @@ export default function FoodBot() {
   // Update tax info when menu data arrives
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
-      
-    if (lastMessage?.menuData?.category_data) {
+   if (lastMessage?.menuData?.category_data) {
       setTaxInfo(lastMessage.menuData.category_data[0]);
       // Also store tax info locally for modal preview
       const newTaxInfoMap = {};
       lastMessage.menuData.category_data.forEach((category) => {
+        setTaxInfo(category);
         category.sub_category_data?.forEach((subCategory) => {
           const categoryId = subCategory.menu_id;
           newTaxInfoMap[categoryId] = {

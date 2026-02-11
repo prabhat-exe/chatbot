@@ -29,14 +29,16 @@ export function useCart() {
         map_tax_class: subCategory.map_tax_class,
       };
     });
-    setTaxInfoMap(newTaxInfoMap);
+    setTaxInfoMap((prev)=>({
+      ...prev,...newTaxInfoMap
+    }));
   }, []);
 
   const addToCart = async (orderItem) => {
     // Calculate tax details if category tax info exists
     const categoryId = orderItem.category_id;
     const taxInfo = taxInfoMap[categoryId];
-    console.log("taxInfo",taxInfo,taxInfoMap,categoryId)
+    console.log("taxInfo",taxInfo,'-----',taxInfoMap,'-----',categoryId)
     // return;
 
     let taxDetails = {
@@ -131,7 +133,7 @@ export function useCart() {
             quantity: newQuantity,
             total_price: item.unit_price * newQuantity,
           };
-          console.log('🔄 Updated quantity:', {
+          console.log('Updated quantity:', {
             name: item.name,
             old_quantity: item.quantity,
             new_quantity: newQuantity,
