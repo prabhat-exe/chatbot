@@ -14,22 +14,11 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
     const totalTax = getTotalTax ? getTotalTax() : 0;
     const taxBreakdown = getTaxBreakdown ? getTaxBreakdown() : {};
 
-    console.log("cart",cart)
+    // console.log("cart",cart)
     return (
         <div className="bg-white w-full max-w-md rounded-2xl shadow-xl border border-gray-100 p-5 relative text-gray-800">
-
-            {/* Close Button */}
-            {onClose && (
-                <button
-                    onClick={onClose}
-                    className="absolute top-3 right-3 w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition"
-                >
-                    ✕
-                </button>
-            )}
-
             {/* Header */}
-            <div className="flex justify-between items-center mb-4 pr-10">
+            <div className="flex justify-between items-center mb-4">
                 <h3 className="text-xl font-semibold">
                     Your Cart <span className="text-gray-500 font-medium">({totalItems} items)</span>
                 </h3>
@@ -48,7 +37,7 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
             </div>
 
             {/* Items */}
-            <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1">
+            <div className="space-y-4 pr-1 cartitems">
                 {cart.map((item) => (
                     <div
                         key={item.cart_key}
@@ -70,28 +59,6 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                                     </p>
                                 )}
 
-                                {/* Tax Details - Matching ItemDetailsModal style */}
-                                {item.tax_details?.taxes && item.tax_details.taxes.length > 0 && (
-                                    <div className="mt-2 p-2 bg-gray-100 rounded-lg">
-                                        <p className="text-xs font-medium text-gray-600 mb-1">Tax Details (per unit)</p>
-                                        <div className="space-y-1">
-                                            <div className="flex justify-between text-xs text-gray-500">
-                                                <span>Base Price</span>
-                                                <span>₹{(item.unit_price - item.tax_details.total_tax).toFixed(2)}</span>
-                                            </div>
-                                            {item.tax_details.taxes.map((tax, idx) => (
-                                                <div key={idx} className="flex justify-between text-xs text-gray-500">
-                                                    <span>{tax.name} ({tax.percentage}%)</span>
-                                                    <span>₹{tax.amount.toFixed(2)}</span>
-                                                </div>
-                                            ))}
-                                            <div className="flex justify-between text-xs font-medium text-gray-700 pt-1 border-t border-gray-200">
-                                                <span>Unit Price (incl. tax)</span>
-                                                <span>₹{item.unit_price.toFixed(2)}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
 
                                 {/* Qty Controls */}
                                 {onUpdateQuantity && (
@@ -151,7 +118,10 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
 
                             {/* Price */}
                             <p className="font-semibold text-base text-gray-900">
-                                ₹{item.total_price.toFixed(2)}
+                                ₹{(
+                                    item.total_price -
+                                    (item.tax_details?.total_tax || 0) * item.quantity
+                                ).toFixed(2)}
                             </p>
                         </div>
                     </div>

@@ -150,10 +150,33 @@ export default function ItemDetailsModal({
                     <div className="item-modal-info">
                         <h3 className="item-modal-name">{item.name}</h3>
                         <p className="item-modal-description">Customize your order</p>
+                        <div className="price-qty-row">
                         {item.price > 0 && !item.variations?.length && (
                             <span className="item-modal-price">₹{item.price}</span>
                         )}
+
+                        <div className="quantity-compact">
+                            <button
+                                onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                                className="qty-btn"
+                            >
+                                −
+                            </button>
+
+                            <span className="qty-value">{quantity}</span>
+
+                            <button
+                                onClick={() => setQuantity(q => q + 1)}
+                                className="qty-btn"
+                            >
+                                +
+                            </button>
+                        </div>
                     </div>
+
+
+                    </div>
+                    
                 </div>
 
                 {/* Size/Variations */}
@@ -206,25 +229,6 @@ export default function ItemDetailsModal({
                     </div>
                 )}
 
-                {/* Quantity */}
-                <div className="item-modal-section">
-                    <p className="item-modal-section-title">Quantity</p>
-                    <div className="item-modal-quantity">
-                        <button
-                            onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                            className="quantity-btn-modal"
-                        >
-                            −
-                        </button>
-                        <span className="quantity-value-modal">{quantity}</span>
-                        <button
-                            onClick={() => setQuantity(q => q + 1)}
-                            className="quantity-btn-modal"
-                        >
-                            +
-                        </button>
-                    </div>
-                </div>
 
                 {/* Tax Details Preview */}
                 {unitPrice > 0 && taxDetails.taxes.length > 0 && (

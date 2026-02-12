@@ -41,6 +41,21 @@ export default function FoodBot() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
 
+  const handleSendMessage = (text) => {
+    // If currently on cart page, switch to chat
+    if (showCart) {
+      setShowCart(false);
+
+      // small delay to allow UI transition
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    }
+
+    // Send message normally
+    sendMessage(text);
+  };
+
   // Handle ESC key to go back to chat
   useEffect(() => {
     const handleKeyPress = (event) => {
@@ -185,7 +200,7 @@ export default function FoodBot() {
       </main>
 
       {/* Bottom Input */}
-      <ChatInput onSend={sendMessage} disabled={isLoading} />
+      <ChatInput onSend={handleSendMessage} disabled={isLoading} />
 
       {/* Floating Item Animation */}
       {floatingItem && (
