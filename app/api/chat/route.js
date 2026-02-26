@@ -2,8 +2,8 @@ export async function POST(req) {
   const body = await req.json();
   const sessionId = body.session_id || 'anonymous';
 
-  // const res = await fetch("http://0.0.0.0:8000/chat", {
-  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat`, {
+  const res = await fetch("http://0.0.0.0:8000/chat", {
+  // const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -71,6 +71,6 @@ export async function POST(req) {
     reply: apiData.response,
     category_data: categoryData,
     categories: apiData.categories || [],
-    apiData: apiData
+    apiData: apiData.category_data || []
   });
 }

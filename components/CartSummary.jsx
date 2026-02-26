@@ -1,6 +1,6 @@
 "use client";
 
-export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onClose, onEmptyCart, getTotalTax, getTaxBreakdown }) {
+export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onClose, onEmptyCart, getTotalTax, getTaxBreakdown ,isLoggedIn,onRequireLogin,onProceedCheckout}) {
     if (cart.length === 0) {
         return (
             <div className="cart-empty text-gray-500">
@@ -167,6 +167,23 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                     </span>
                 </div>
             </div>
+            
+            {/* Checkout Button */}
+            <div className="mt-4">
+                <button
+                    onClick={() => {
+                    if (!isLoggedIn) {
+                        onRequireLogin && onRequireLogin();
+                    } else {
+                        onProceedCheckout && onProceedCheckout();
+                    }
+                    }}
+                    className="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-[#1e3a8a] to-[#2563eb] hover:from-[#1e40af] hover:to-[#1d4ed8] transition shadow-md"
+                >
+                    Proceed to Checkout
+                </button>
+            </div>
+
 
             {/* Footer Note */}
             <p className="mt-3 text-xs text-gray-500 text-center">
