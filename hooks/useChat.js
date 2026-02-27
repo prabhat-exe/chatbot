@@ -2,12 +2,13 @@ import { useState, useRef, useEffect } from "react";
 import { sendChatMessage } from "../utils/api";
 
 export function useChat() {
+  const initialMessage = {
+    id: "welcome",
+    role: "assistant",
+    text: "Hi  I'm your AI food assistant!\n\nYou can:\n• Browse the menu\n• Say 'Show me burgers' or 'vegetarian options'\n• Try: 'I want a large burger with extra cheese'\n\nWhat are you craving?",
+  };
   const [messages, setMessages] = useState([
-    {
-      id: "welcome",
-      role: "assistant",
-      text: "Hi  I'm your AI food assistant!\n\nYou can:\n• Browse the menu\n• Say 'Show me burgers' or 'vegetarian options'\n• Try: 'I want a large burger with extra cheese'\n\nWhat are you craving?",
-    },
+    initialMessage,
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
@@ -25,8 +26,9 @@ export function useChat() {
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
   };
 
-  const sendMessage = async (userText) => {
+  const sendMessage = async (userText, restaurantId) => {
     if (!userText.trim()) return;
+    if (!restaurantId) return;
 
     setIsLoading(true);
 
@@ -37,7 +39,7 @@ export function useChat() {
     ]);
 
     try {
-      const apiData = await sendChatMessage(userText);
+      const apiData = await sendChatMessage(userText, restaurantId);
       const hasMenuData = apiData.category_data?.length > 0;
 
       setMessages((prev) => [
@@ -80,11 +82,25 @@ export function useChat() {
     ]);
   };
 
+  const addUserMessage = (text) => {
+    if (!text?.trim()) return;
+    setMessages((prev) => [
+      ...prev,
+      { id: generateId(), role: "user", text: text.trim() },
+    ]);
+  };
+
+  const resetChat = () => {
+    setMessages([initialMessage]);
+  };
+
   return {
     messages,
     isLoading,
     sendMessage,
     addAssistantMessage,
+    addUserMessage,
     messagesEndRef,
+    resetChat,
   };
 }

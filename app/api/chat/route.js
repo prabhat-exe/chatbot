@@ -1,9 +1,18 @@
 export async function POST(req) {
   const body = await req.json();
   const sessionId = body.session_id || 'anonymous';
+  const restaurantId = body.restaurant_id;
 
-  const res = await fetch("http://0.0.0.0:8000/chat", {
-  // const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/chat`, {
+  if (!restaurantId) {
+    return Response.json(
+      { error: "restaurant_id is required" },
+      { status: 422 }
+    );
+  }
+
+  const aiBaseUrl = process.env.AI_SERVICE_URL || "http://0.0.0.0:8000";
+
+  const res = await fetch(`${aiBaseUrl}/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -11,9 +20,18 @@ export async function POST(req) {
     },
     body: JSON.stringify({
       message: body.message,
-      session_id: sessionId
+      session_id: sessionId,
+      restaurant_id: restaurantId
     })
   });
+
+  if (!res.ok) {
+    const text = await res.text();
+    return Response.json(
+      { error: `AI API error: ${res.status}`, details: text },
+      { status: res.status }
+    );
+  }
 
   const apiData = await res.json();
   // console.log("API Data:", apiData.data);

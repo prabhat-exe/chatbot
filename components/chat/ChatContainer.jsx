@@ -1,7 +1,6 @@
 "use client";
 
 import MessageBubble from "../ui/MessageBubble";
-import CategoryCard from "../ui/CategoryCard";
 import MenuCard from "../ui/MenuCard";
 import CustomizationCard from "../CustomizationCard";
 import { getItemsFromMenuData } from "../../utils/helpers";
@@ -9,7 +8,6 @@ import { getItemsFromMenuData } from "../../utils/helpers";
 export default function ChatContainer({
     messages,
     isLoading,
-    onCategoryClick,
     onItemClick,
     onAddToCart,
     messagesEndRef,
@@ -20,21 +18,6 @@ export default function ChatContainer({
                 <div key={msg.id}>
                     <MessageBubble message={msg} />
 
-                    {msg.categories && (
-                        <div className="menu-section">
-                            <p className="menu-label">Choose a category:</p>
-                            <div className="menu-cards-grid">
-                                {msg.categories.map((cat) => (
-                                    <CategoryCard
-                                        key={cat.category_name}
-                                        category={cat}
-                                        onClick={onCategoryClick}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     {msg.component === "customization" && msg.selectedItem && (
                         <CustomizationCard
                             item={msg.selectedItem}
@@ -44,9 +27,7 @@ export default function ChatContainer({
 
                     {msg.menuData && (
                         <div className="menu-section">
-                            <p className="menu-label">
-                                Here are some items for you (tap a size to select):
-                            </p>
+                            <p className="menu-label">Suggested items:</p>
                             <div className="menu-cards-grid">
                                 {getItemsFromMenuData(msg.menuData).map((item) => (
                                     <MenuCard
