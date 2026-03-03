@@ -101,6 +101,45 @@ export default function FoodBot() {
     };
   };
 
+  const buildVariationActions = (item) => {
+    return (item.variations || []).map((variation) => ({
+      id: `variation-${item.item_id}-${variation.variation_id}`,
+      label: `${variation.variation_name}${Number(variation.variation_price) > 0 ? ` • ₹${variation.variation_price}` : ""}`,
+      type: "select_variation",
+      item,
+      variation,
+    }));
+  };
+
+  const buildSelectionActions = (selection) => {
+    if (!selection?.item) return [];
+
+    const item = selection.item;
+    const needsVariation = item.variation_status === 1 && (item.variations?.length || 0) > 0;
+
+    if (needsVariation && !selection.selectedVariation) {
+      return [
+        ...buildVariationActions(item),
+        { id: `cancel-${item.item_id}`, label: "Cancel", type: "cancel_selection" },
+      ];
+    }
+
+    return [
+      { id: `add-${item.item_id}`, label: "Add to Cart", type: "add_selected_to_cart" },
+      ...(needsVariation
+        ? [{ id: `change-${item.item_id}`, label: "Change Variation", type: "show_variations", item }]
+        : []),
+      { id: `cancel-${item.item_id}`, label: "Cancel", type: "cancel_selection" },
+    ];
+  };
+
+  const buildPostAddActions = () => {
+    return [
+      { id: `open-cart-${Date.now()}`, label: "Open Cart", type: "open_cart" },
+      { id: `place-order-${Date.now()}`, label: "Place Order", type: "place_order" },
+    ];
+  };
+
   const executeCheckout = async () => {
     try {
       if (!selectedRestaurant?.id) {
@@ -179,6 +218,89 @@ export default function FoodBot() {
     }
   };
 
+  const handleMessageAction = async (action) => {
+    if (!action?.type) return;
+
+    if (action.type === "cancel_selection") {
+      setPendingSelection(null);
+      addAssistantMessage({ text: "Selection cancelled." });
+      return;
+    }
+
+    if (action.type === "open_cart") {
+      setShowCart(true);
+      return;
+    }
+
+    if (action.type === "place_order") {
+      await executeCheckout();
+      return;
+    }
+
+    if (action.type === "show_variations") {
+      const item = action.item;
+      if (!item) return;
+      const activeSelection =
+        pendingSelection?.item?.item_id === item.item_id
+          ? pendingSelection
+          : { item, selectedVariation: null };
+      setPendingSelection(activeSelection);
+      addAssistantMessage({
+        text: `Choose a variation for ${item.name}:`,
+        actions: [
+          ...buildVariationActions(item),
+          { id: `cancel-${item.item_id}`, label: "Cancel", type: "cancel_selection" },
+        ],
+      });
+      return;
+    }
+
+    if (action.type === "select_variation") {
+      if (!action.item || !action.variation) return;
+
+      const activeSelection =
+        pendingSelection?.item?.item_id === action.item.item_id
+          ? pendingSelection
+          : { item: action.item, selectedVariation: null };
+
+      const updatedSelection = {
+        ...activeSelection,
+        selectedVariation: action.variation,
+      };
+      setPendingSelection(updatedSelection);
+      addAssistantMessage({
+        text: `Selected ${action.variation.variation_name} for ${action.item.name}.`,
+        actions: buildSelectionActions(updatedSelection),
+      });
+      return;
+    }
+
+    if (action.type === "add_selected_to_cart") {
+      if (!pendingSelection?.item) {
+        addAssistantMessage({ text: "Please select an item first." });
+        return;
+      }
+
+      const item = pendingSelection.item;
+      const needsVariation = item.variation_status === 1 && (item.variations?.length || 0) > 0;
+      if (needsVariation && !pendingSelection.selectedVariation) {
+        addAssistantMessage({
+          text: `Please choose a variation for ${item.name} first.`,
+          actions: buildSelectionActions(pendingSelection),
+        });
+        return;
+      }
+
+      const orderItem = buildOrderItemFromSelection(pendingSelection);
+      await handleAddToCart(orderItem);
+      setPendingSelection(null);
+      addAssistantMessage({
+        text: `${orderItem.name} added to cart.`,
+        actions: buildPostAddActions(),
+      });
+    }
+  };
+
   const handleSendMessage = async (text) => {
     if (!selectedRestaurant?.id) return;
     const userText = text.trim();
@@ -211,7 +333,8 @@ export default function FoodBot() {
           updatedSelection.selectedVariation = item.variations[byNumber - 1];
           setPendingSelection(updatedSelection);
           addAssistantMessage({
-            text: `Selected ${updatedSelection.selectedVariation.variation_name}. Type "add to cart" to confirm.`,
+            text: `Selected ${updatedSelection.selectedVariation.variation_name}.`,
+            actions: buildSelectionActions(updatedSelection),
           });
           return;
         }
@@ -224,7 +347,8 @@ export default function FoodBot() {
           updatedSelection.selectedVariation = matched;
           setPendingSelection(updatedSelection);
           addAssistantMessage({
-            text: `Selected ${matched.variation_name}. Type "add to cart" to confirm.`,
+            text: `Selected ${matched.variation_name}.`,
+            actions: buildSelectionActions(updatedSelection),
           });
           return;
         }
@@ -238,6 +362,7 @@ export default function FoodBot() {
             .join(", ");
           addAssistantMessage({
             text: `Please choose a variation first: ${list}`,
+            actions: buildSelectionActions(updatedSelection),
           });
           return;
         }
@@ -245,7 +370,10 @@ export default function FoodBot() {
         const orderItem = buildOrderItemFromSelection(updatedSelection);
         await handleAddToCart(orderItem);
         setPendingSelection(null);
-        addAssistantMessage({ text: `${orderItem.name} added to cart. You can say "place order" when ready.` });
+        addAssistantMessage({
+          text: `${orderItem.name} added to cart.`,
+          actions: buildPostAddActions(),
+        });
         return;
       }
     }
@@ -326,20 +454,20 @@ export default function FoodBot() {
 
   const handleItemClick = (item) => {
     const needsVariation = item.variation_status === 1 && (item.variations?.length || 0) > 0;
-    setPendingSelection({ item, selectedVariation: null });
+    const selection = { item, selectedVariation: null };
+    setPendingSelection(selection);
 
     if (needsVariation) {
-      const variationList = item.variations
-        .map((v, idx) => `${idx + 1}. ${v.variation_name}`)
-        .join(", ");
       addAssistantMessage({
-        text: `You selected ${item.name}. Choose variation by number/name: ${variationList}. Then type "add to cart".`,
+        text: `You selected ${item.name}. Choose a variation below:`,
+        actions: buildSelectionActions(selection),
       });
       return;
     }
 
     addAssistantMessage({
-      text: `You selected ${item.name}. Type "add to cart" to confirm.`,
+      text: `You selected ${item.name}.`,
+      actions: buildSelectionActions(selection),
     });
   };
 
@@ -625,6 +753,7 @@ export default function FoodBot() {
               isLoading={isLoading}
               onItemClick={handleItemClick}
               onAddToCart={handleAddToCart}
+              onMessageAction={handleMessageAction}
               messagesEndRef={messagesEndRef}
             />
           ) : (

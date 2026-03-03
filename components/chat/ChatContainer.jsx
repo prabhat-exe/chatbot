@@ -10,13 +10,14 @@ export default function ChatContainer({
     isLoading,
     onItemClick,
     onAddToCart,
+    onMessageAction,
     messagesEndRef,
 }) {
     return (
         <div className="chat-container">
             {messages.map((msg) => (
                 <div key={msg.id}>
-                    <MessageBubble message={msg} />
+                    <MessageBubble message={msg} onAction={onMessageAction} />
 
                     {msg.component === "customization" && msg.selectedItem && (
                         <CustomizationCard
