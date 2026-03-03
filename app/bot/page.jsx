@@ -77,12 +77,21 @@ export default function FoodBot() {
   const buildOrderItemFromSelection = (selection) => {
     const item = selection.item;
     const selectedVariation = selection.selectedVariation || null;
-    const unitPrice = selectedVariation
+    const selectedAddons = selection.selectedAddons || [];
+    const basePrice = selectedVariation
       ? Number(selectedVariation.variation_price)
       : Number(item.price || 0);
+    const addonsPrice = selectedAddons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
+    const unitPrice = basePrice + addonsPrice;
+    const addonKey = selectedAddons.length
+      ? selectedAddons
+          .map((addon) => Number(addon.addon_id))
+          .sort((a, b) => a - b)
+          .join(",")
+      : "no-addons";
 
     return {
-      cart_key: `${item.item_id}|${selectedVariation?.variation_id || "no-variation"}|no-addons`,
+      cart_key: `${item.item_id}|${selectedVariation?.variation_id || "no-variation"}|${addonKey}`,
       item_id: Number(item.item_id),
       name: item.name,
       image: item.image,
@@ -94,7 +103,11 @@ export default function FoodBot() {
             variation_price: Number(selectedVariation.variation_price),
           }
         : null,
-      addons: [],
+      addons: selectedAddons.map((addon) => ({
+        addon_id: Number(addon.addon_id),
+        addon_name: addon.name || addon.addon_name || "Addon",
+        price: Number(addon.price || 0),
+      })),
       unit_price: unitPrice,
       quantity: 1,
       total_price: unitPrice,
@@ -111,15 +124,39 @@ export default function FoodBot() {
     }));
   };
 
+  const buildAddonActions = (item, selectedAddons = []) => {
+    const selectedAddonIds = new Set(selectedAddons.map((addon) => Number(addon.addon_id)));
+    return (item.addons || []).map((addon) => {
+      const addonId = Number(addon.addon_id);
+      const addonName = addon.name || addon.addon_name || "Addon";
+      const isSelected = selectedAddonIds.has(addonId);
+      return {
+        id: `addon-${item.item_id}-${addonId}`,
+        label: `${isSelected ? "✓ " : ""}${addonName}${Number(addon.price) > 0 ? ` • +₹${addon.price}` : ""}`,
+        type: "toggle_addon",
+        item,
+        addon,
+      };
+    });
+  };
+
   const buildSelectionActions = (selection) => {
     if (!selection?.item) return [];
 
     const item = selection.item;
     const needsVariation = item.variation_status === 1 && (item.variations?.length || 0) > 0;
+    const hasAddons = item.addons_status === 1 && (item.addons?.length || 0) > 0;
+    const selectedAddons = selection.selectedAddons || [];
 
     if (needsVariation && !selection.selectedVariation) {
       return [
         ...buildVariationActions(item),
+        ...(hasAddons
+          ? [{ id: `show-addons-${item.item_id}`, label: "Choose Add-ons", type: "show_addons", item }]
+          : []),
+        ...(hasAddons && selectedAddons.length > 0
+          ? [{ id: `clear-addons-${item.item_id}`, label: "Clear Add-ons", type: "clear_addons", item }]
+          : []),
         { id: `cancel-${item.item_id}`, label: "Cancel", type: "cancel_selection" },
       ];
     }
@@ -128,6 +165,12 @@ export default function FoodBot() {
       { id: `add-${item.item_id}`, label: "Add to Cart", type: "add_selected_to_cart" },
       ...(needsVariation
         ? [{ id: `change-${item.item_id}`, label: "Change Variation", type: "show_variations", item }]
+        : []),
+      ...(hasAddons
+        ? [{ id: `show-addons-${item.item_id}`, label: "Choose Add-ons", type: "show_addons", item }]
+        : []),
+      ...(hasAddons && selectedAddons.length > 0
+        ? [{ id: `clear-addons-${item.item_id}`, label: "Clear Add-ons", type: "clear_addons", item }]
         : []),
       { id: `cancel-${item.item_id}`, label: "Cancel", type: "cancel_selection" },
     ];
@@ -187,7 +230,7 @@ export default function FoodBot() {
           total_price: Number(item.total_price),
           quantity: Number(item.quantity),
           notes: "",
-          customize_status: item.selected_variation ? 1 : 0,
+          customize_status: item.selected_variation || item.addons?.length ? 1 : 0,
           addon_status: item.addons?.length ? 1 : 0,
           selected_variation: item.selected_variation
             ? { variation_id: Number(item.selected_variation.variation_id) }
@@ -243,7 +286,7 @@ export default function FoodBot() {
       const activeSelection =
         pendingSelection?.item?.item_id === item.item_id
           ? pendingSelection
-          : { item, selectedVariation: null };
+          : { item, selectedVariation: null, selectedAddons: [] };
       setPendingSelection(activeSelection);
       addAssistantMessage({
         text: `Choose a variation for ${item.name}:`,
@@ -261,7 +304,7 @@ export default function FoodBot() {
       const activeSelection =
         pendingSelection?.item?.item_id === action.item.item_id
           ? pendingSelection
-          : { item: action.item, selectedVariation: null };
+          : { item: action.item, selectedVariation: null, selectedAddons: [] };
 
       const updatedSelection = {
         ...activeSelection,
@@ -271,6 +314,95 @@ export default function FoodBot() {
       addAssistantMessage({
         text: `Selected ${action.variation.variation_name} for ${action.item.name}.`,
         actions: buildSelectionActions(updatedSelection),
+      });
+      return;
+    }
+
+    if (action.type === "show_addons") {
+      const item = action.item;
+      if (!item) return;
+      const activeSelection =
+        pendingSelection?.item?.item_id === item.item_id
+          ? pendingSelection
+          : { item, selectedVariation: null, selectedAddons: [] };
+      const selectedAddons = activeSelection.selectedAddons || [];
+      setPendingSelection(activeSelection);
+      addAssistantMessage({
+        text: `Choose add-ons for ${item.name} (optional):`,
+        actions: [
+          ...buildAddonActions(item, selectedAddons),
+          { id: `done-addons-${item.item_id}`, label: "Done", type: "done_addons", item },
+          ...(selectedAddons.length > 0
+            ? [{ id: `clear-addons-${item.item_id}`, label: "Clear Add-ons", type: "clear_addons", item }]
+            : []),
+          { id: `cancel-${item.item_id}`, label: "Cancel", type: "cancel_selection" },
+        ],
+      });
+      return;
+    }
+
+    if (action.type === "toggle_addon") {
+      if (!action.item || !action.addon) return;
+      const activeSelection =
+        pendingSelection?.item?.item_id === action.item.item_id
+          ? pendingSelection
+          : { item: action.item, selectedVariation: null, selectedAddons: [] };
+      const selectedAddons = activeSelection.selectedAddons || [];
+      const addonId = Number(action.addon.addon_id);
+      const exists = selectedAddons.some((addon) => Number(addon.addon_id) === addonId);
+      const updatedAddons = exists
+        ? selectedAddons.filter((addon) => Number(addon.addon_id) !== addonId)
+        : [...selectedAddons, action.addon];
+
+      const updatedSelection = {
+        ...activeSelection,
+        selectedAddons: updatedAddons,
+      };
+      setPendingSelection(updatedSelection);
+      addAssistantMessage({
+        text: `${updatedAddons.length} add-on${updatedAddons.length === 1 ? "" : "s"} selected for ${action.item.name}.`,
+        actions: [
+          ...buildAddonActions(action.item, updatedAddons),
+          { id: `done-addons-${action.item.item_id}`, label: "Done", type: "done_addons", item: action.item },
+          ...(updatedAddons.length > 0
+            ? [{ id: `clear-addons-${action.item.item_id}`, label: "Clear Add-ons", type: "clear_addons", item: action.item }]
+            : []),
+          { id: `cancel-${action.item.item_id}`, label: "Cancel", type: "cancel_selection" },
+        ],
+      });
+      return;
+    }
+
+    if (action.type === "clear_addons") {
+      const item = action.item;
+      if (!item) return;
+      const activeSelection =
+        pendingSelection?.item?.item_id === item.item_id
+          ? pendingSelection
+          : { item, selectedVariation: null, selectedAddons: [] };
+      const updatedSelection = {
+        ...activeSelection,
+        selectedAddons: [],
+      };
+      setPendingSelection(updatedSelection);
+      addAssistantMessage({
+        text: `Add-ons cleared for ${item.name}.`,
+        actions: buildSelectionActions(updatedSelection),
+      });
+      return;
+    }
+
+    if (action.type === "done_addons") {
+      const item = action.item;
+      if (!item) return;
+      const activeSelection =
+        pendingSelection?.item?.item_id === item.item_id
+          ? pendingSelection
+          : { item, selectedVariation: null, selectedAddons: [] };
+      setPendingSelection(activeSelection);
+      addAssistantMessage({
+        text: `Add-on selection updated for ${item.name}.`,
+        actions: buildSelectionActions(activeSelection),
       });
       return;
     }
@@ -454,7 +586,8 @@ export default function FoodBot() {
 
   const handleItemClick = (item) => {
     const needsVariation = item.variation_status === 1 && (item.variations?.length || 0) > 0;
-    const selection = { item, selectedVariation: null };
+    const hasAddons = item.addons_status === 1 && (item.addons?.length || 0) > 0;
+    const selection = { item, selectedVariation: null, selectedAddons: [] };
     setPendingSelection(selection);
 
     if (needsVariation) {
@@ -466,7 +599,9 @@ export default function FoodBot() {
     }
 
     addAssistantMessage({
-      text: `You selected ${item.name}.`,
+      text: hasAddons
+        ? `You selected ${item.name}. You can choose add-ons before adding to cart.`
+        : `You selected ${item.name}.`,
       actions: buildSelectionActions(selection),
     });
   };
