@@ -48,7 +48,7 @@ export async function POST(req) {
     });
   }
 
-  //  CASE 2: PRODUCTS EXIST → BUILD MENU
+  //  CASE 2: PRODUCTS EXIST → BUILD MENU FROM MATCHED PRODUCTS
   const categoryMap = {};
 
   products.forEach((p) => {
@@ -82,13 +82,14 @@ export async function POST(req) {
       addons: product.addons || []
     });
   });
-  const categoryData = Object.values(categoryMap);
+  const matchedProducts = Object.values(categoryMap);
 
+  // Use the FULL category_data from the backend instead of only matched products
   return Response.json({
     intent: apiData.intent,
     reply: apiData.response,
-    category_data: categoryData,
+    category_data: apiData.category_data || matchedProducts,
     categories: apiData.categories || [],
-    apiData: apiData.category_data || []
+    matched_products: matchedProducts,
   });
 }

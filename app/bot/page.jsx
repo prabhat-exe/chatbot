@@ -10,6 +10,8 @@ import { useChat } from "../../hooks/useChat";
 import ChatContainer from "../../components/chat/ChatContainer";
 import ChatInput from "../../components/chat/ChatInput";
 import CartSummary from "../../components/CartSummary";
+import AuthModal from "../../components/AuthModal";
+import ProfileModal from "../../components/ProfileModal";
 
 export default function FoodBot() {
   const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotalItems, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
@@ -623,6 +625,97 @@ export default function FoodBot() {
     }
   };
 
+  const handleSendPhoneLogin = async () => {
+    try {
+      setAuthLoading(true);
+      setAuthMessage("");
+      const res = await login({ phone_number: authPhone, phone_code: "+91" });
+      if (res && res.success) {
+        setAuthMessage("OTP sent. Use 123456");
+        setAuthStep("otp");
+      } else {
+        setAuthMessage(res?.message || "Failed to send OTP");
+      }
+    } catch (err) {
+      console.error(err);
+      setAuthMessage("Network error");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleVerifyAuthOtp = async () => {
+    if (authOtp !== "123456") {
+      setAuthMessage("Invalid OTP. Use 123456");
+      return;
+    }
+
+    try {
+      setAuthLoading(true);
+      setAuthMessage("");
+
+      const res = await verifyOtp({
+        otp: authOtp,
+        phone_number: authPhone,
+      });
+
+      if (res && res.success) {
+        if (res.is_already != 1) {
+          setProfileFirstName("");
+          setProfileLastName("");
+          setProfileEmail("");
+          setProfileMessage("");
+          setShowProfileInline(true);
+          setShowAuthInline(false);
+        } else {
+          setAuthMessage("Logged in successfully");
+          setShowAuthInline(false);
+        }
+      } else {
+        setAuthMessage(res?.message || "OTP verification failed");
+      }
+    } catch (err) {
+      console.error(err);
+      setAuthMessage("Network error");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleCompleteUserProfile = async () => {
+    if (!profileFirstName.trim() || !profileLastName.trim()) {
+      setProfileMessage("First and Last name are required");
+      return;
+    }
+
+    try {
+      setProfileLoading(true);
+      setProfileMessage("");
+
+      const res = await completeProfile({
+        phone_number: authPhone,
+        first_name: profileFirstName,
+        last_name: profileLastName,
+        email: profileEmail,
+      });
+
+      if (res && res.success) {
+        if (res.user_data) {
+          localStorage.setItem("user_data", JSON.stringify(res.user_data));
+        }
+        setProfileMessage("Profile completed!");
+        setShowProfileInline(false);
+      } else {
+        setProfileMessage(res?.message || "Profile update failed");
+      }
+    } catch (err) {
+      console.error(err);
+      setProfileMessage("Network error");
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
   return (
     <div className="food-bot-container">
       {/* Header */}
@@ -681,171 +774,21 @@ export default function FoodBot() {
           )}
 
           
-
-          {showProfileInline && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <input
-                  value={profileFirstName}
-                  onChange={(e) => setProfileFirstName(e.target.value)}
-                  placeholder="First name"
-                  className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-800"
-                />
-                <input
-                  value={profileLastName}
-                  onChange={(e) => setProfileLastName(e.target.value)}
-                  placeholder="Last name"
-                  className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-800"
-                />
-                <input
-                  value={profileEmail}
-                  onChange={(e) => setProfileEmail(e.target.value)}
-                  placeholder="Email (optional)"
-                  className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-800"
-                />
-                <button
-                  className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white"
-                  disabled={profileLoading}
-                  onClick={async () => {
-                if (!profileFirstName.trim() || !profileLastName.trim()) {
-                  setProfileMessage("First and Last name are required");
-                  return;
-                }
-
-                try {
-                  setProfileLoading(true);
-                  setProfileMessage('');
-
-                  const res = await completeProfile({
-                    phone_number: authPhone,
-                    first_name: profileFirstName,
-                    last_name: profileLastName,
-                    email: profileEmail,
-                  });
-
-                  if (res && res.success) {
-                    if (res.user_data) {
-                      localStorage.setItem("user_data", JSON.stringify(res.user_data));
-                    }
-                    setProfileMessage('Profile completed!');
-                    setShowProfileInline(false);
-                  } else {
-                    setProfileMessage(res?.message || 'Profile update failed');
-                  }
-                } catch (err) {
-                  console.error(err);
-                  setProfileMessage('Network error');
-                } finally {
-                  setProfileLoading(false);
-                }
-              }}
-                >
-                  {profileLoading ? "Saving..." : "Save"}
-                </button>
-                {profileMessage && <p className="text-xs text-gray-700">{profileMessage}</p>}
-              </div>
-          )}
           {/* Auth Button */}
           {!isLoggedIn ? (
             <>
               <button
                 onClick={() => {
-                  setAuthPhone('');
-                  setAuthOtp('');
-                  setAuthMessage('');
-                  setAuthStep('phone');
+                  setAuthPhone("");
+                  setAuthOtp("");
+                  setAuthMessage("");
+                  setAuthStep("phone");
                   setShowAuthInline((v) => !v);
                 }}
                 className="login-button"
               >
                 Login
               </button>
-              {showAuthInline && (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  {authStep === "phone" ? (
-                    <>
-                      <input
-                        value={authPhone}
-                        onChange={(e) => setAuthPhone(e.target.value.replace(/\D/g, ""))}
-                        placeholder="Phone number"
-                        className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-800"
-                      />
-                      <button
-                        className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white"
-                        disabled={authLoading || !authPhone}
-                        onClick={async () => {
-                  try {
-                    setAuthLoading(true);
-                    setAuthMessage('');
-                    const res = await login({ phone_number: authPhone, phone_code: '+91' });
-                    if (res && res.success) {
-                      setAuthMessage(res.message || 'OTP sent');
-                      setAuthStep('otp');
-                    } else {
-                      setAuthMessage(res?.message || 'Failed to send OTP');
-                    }
-                  } catch (err) {
-                    console.error(err);
-                    setAuthMessage('Network error');
-                  } finally {
-                    setAuthLoading(false);
-                  }
-                }}
-                      >
-                        {authLoading ? "Sending..." : "Send OTP"}
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <input
-                        value={authOtp}
-                        onChange={(e) => setAuthOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        placeholder="OTP"
-                        className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-800"
-                      />
-                      <button
-                        className="rounded-md bg-blue-600 px-3 py-1 text-sm text-white"
-                        disabled={authLoading || authOtp.length !== 6}
-                        onClick={async () => {
-                  try {
-                    setAuthLoading(true);
-                    setAuthMessage('');
-
-                    const res = await verifyOtp({
-                      otp: authOtp,
-                      phone_number: authPhone,
-                    });
-                    // console.log("_res",res)
-
-                    if (res && res.success) {
-                      if (res.is_already !=1) {
-                        setProfileFirstName('');
-                        setProfileLastName('');
-                        setProfileEmail('');
-                        setProfileMessage('');
-                        setShowProfileInline(true);
-                        setShowAuthInline(false);
-                      } else {
-                        setAuthMessage('Logged in successfully');
-                        setShowAuthInline(false);
-                      }
-                    } else {
-                      setAuthMessage(res?.message || 'OTP verification failed');
-                    }
-                  } catch (err) {
-                    console.error(err);
-                    setAuthMessage('Network error');
-                  } finally {
-                    setAuthLoading(false);
-                  }
-                }}
-                      >
-                        {authLoading ? "Verifying..." : "Verify OTP"}
-                      </button>
-                    </>
-                  )}
-                  {authMessage && <p className="text-xs text-gray-700">{authMessage}</p>}
-                </div>
-              )}
 
             </>
           ) : (
@@ -926,6 +869,38 @@ export default function FoodBot() {
       )}
 
       {/* Item Details Modal */}
+      <AuthModal
+        isOpen={showAuthInline}
+        step={authStep}
+        phone={authPhone}
+        setPhone={setAuthPhone}
+        otp={authOtp}
+        setOtp={setAuthOtp}
+        loading={authLoading}
+        message={authMessage}
+        onSendPhone={handleSendPhoneLogin}
+        onVerifyOtp={handleVerifyAuthOtp}
+        onClose={() => {
+          setShowAuthInline(false);
+          setAuthLoading(false);
+        }}
+      />
+      <ProfileModal
+        isOpen={showProfileInline}
+        firstName={profileFirstName}
+        setFirstName={setProfileFirstName}
+        lastName={profileLastName}
+        setLastName={setProfileLastName}
+        email={profileEmail}
+        setEmail={setProfileEmail}
+        loading={profileLoading}
+        message={profileMessage}
+        onSubmit={handleCompleteUserProfile}
+        onClose={() => {
+          setShowProfileInline(false);
+          setProfileLoading(false);
+        }}
+      />
     </div>
   );
 }
