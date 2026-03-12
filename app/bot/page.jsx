@@ -196,6 +196,14 @@ export default function FoodBot() {
         return;
       }
 
+      if (!isLoggedIn) {
+        addAssistantMessage({ text: "Please login to place your order." });
+        setShowCart(false);
+        setAuthStep("phone");
+        setShowAuthInline(true);
+        return;
+      }
+
       const userData = JSON.parse(localStorage.getItem("user_data") || "{}");
       const userId = Number(
         userData.id || userData.user_id || userData.customer_id || 0
@@ -792,7 +800,17 @@ export default function FoodBot() {
 
             </>
           ) : (
-            <button onClick={() => logout()} className="logout-button">Logout</button>
+            <button
+              onClick={() => {
+                logout();
+                setAuthPhone("");
+                setAuthOtp("");
+                setAuthMessage("Logged out successfully.");
+              }}
+              className="logout-button"
+            >
+              Logout
+            </button>
           )}
         </div>
       </header>

@@ -37,6 +37,7 @@ export function useAuth() {
   const logout = () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_data');
     }
     setToken(null);
   };
