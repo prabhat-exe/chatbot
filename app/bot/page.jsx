@@ -7,6 +7,7 @@ import { completeProfile, fetchRestaurants, placeOrder } from "../../utils/api";
 import { clearSession } from "../../utils/sessionId";
 import { useCart } from "../../hooks/useCart";
 import { useChat } from "../../hooks/useChat";
+import { normalizeMenuItem } from "../../utils/helpers";
 import ChatContainer from "../../components/chat/ChatContainer";
 import ChatInput from "../../components/chat/ChatInput";
 import CartSummary from "../../components/CartSummary";
@@ -77,7 +78,7 @@ export default function FoodBot() {
   }, [messages.length]);
 
   const buildOrderItemFromSelection = (selection) => {
-    const item = selection.item;
+    const item = normalizeMenuItem(selection.item || {});
     const selectedVariation = selection.selectedVariation || null;
     const selectedAddons = selection.selectedAddons || [];
     const basePrice = selectedVariation
@@ -85,12 +86,14 @@ export default function FoodBot() {
       : Number(item.price || 0);
     const addonsPrice = selectedAddons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
     const unitPrice = basePrice + addonsPrice;
-    const addonKey = selectedAddons.length
+    const addonKeyRaw = selectedAddons.length
       ? selectedAddons
-          .map((addon) => Number(addon.addon_id))
+          .map((addon) => Number(addon.addon_id ?? addon.id))
+          .filter((addonId) => Number.isFinite(addonId) && addonId > 0)
           .sort((a, b) => a - b)
           .join(",")
       : "no-addons";
+    const addonKey = addonKeyRaw || "no-addons";
 
     return {
       cart_key: `${item.item_id}|${selectedVariation?.variation_id || "no-variation"}|${addonKey}`,
@@ -106,9 +109,9 @@ export default function FoodBot() {
           }
         : null,
       addons: selectedAddons.map((addon) => ({
-        addon_id: Number(addon.addon_id),
+        addon_id: Number(addon.addon_id ?? addon.id),
         addon_name: addon.name || addon.addon_name || "Addon",
-        price: Number(addon.price || 0),
+        price: Number(addon.price ?? addon.addon_price ?? addon.web_price ?? 0),
       })),
       unit_price: unitPrice,
       quantity: 1,
@@ -127,9 +130,12 @@ export default function FoodBot() {
   };
 
   const buildAddonActions = (item, selectedAddons = []) => {
-    const selectedAddonIds = new Set(selectedAddons.map((addon) => Number(addon.addon_id)));
-    return (item.addons || []).map((addon) => {
-      const addonId = Number(addon.addon_id);
+    const normalizedItem = normalizeMenuItem(item || {});
+    const selectedAddonIds = new Set(
+      selectedAddons.map((addon) => Number(addon.addon_id ?? addon.id)).filter((id) => Number.isFinite(id))
+    );
+    return (normalizedItem.addons || []).map((addon) => {
+      const addonId = Number(addon.addon_id ?? addon.id);
       const addonName = addon.name || addon.addon_name || "Addon";
       const isSelected = selectedAddonIds.has(addonId);
       return {
@@ -145,9 +151,9 @@ export default function FoodBot() {
   const buildSelectionActions = (selection) => {
     if (!selection?.item) return [];
 
-    const item = selection.item;
-    const needsVariation = item.variation_status === 1 && (item.variations?.length || 0) > 0;
-    const hasAddons = item.addons_status === 1 && (item.addons?.length || 0) > 0;
+    const item = normalizeMenuItem(selection.item);
+    const needsVariation = (item.variations?.length || 0) > 0;
+    const hasAddons = (item.addons?.length || 0) > 0;
     const selectedAddons = selection.selectedAddons || [];
 
     if (needsVariation && !selection.selectedVariation) {
@@ -243,10 +249,16 @@ export default function FoodBot() {
           customize_status: item.selected_variation || item.addons?.length ? 1 : 0,
           addon_status: item.addons?.length ? 1 : 0,
           selected_variation: item.selected_variation
-            ? { variation_id: Number(item.selected_variation.variation_id) }
+            ? {
+                variation_id: Number(item.selected_variation.variation_id),
+                variation_name: item.selected_variation.variation_name || "",
+                variation_price: Number(item.selected_variation.variation_price || 0),
+              }
             : null,
           addons: (item.addons || []).map((addon) => ({
             addon_id: Number(addon.addon_id),
+            addon_name: addon.addon_name || addon.name || "",
+            price: Number(addon.price || 0),
           })),
         })),
       };
@@ -423,8 +435,8 @@ export default function FoodBot() {
         return;
       }
 
-      const item = pendingSelection.item;
-      const needsVariation = item.variation_status === 1 && (item.variations?.length || 0) > 0;
+      const item = normalizeMenuItem(pendingSelection.item);
+      const needsVariation = (item.variations?.length || 0) > 0;
       if (needsVariation && !pendingSelection.selectedVariation) {
         addAssistantMessage({
           text: `Please choose a variation for ${item.name} first.`,
@@ -464,8 +476,8 @@ export default function FoodBot() {
         return;
       }
 
-      const item = pendingSelection.item;
-      const needsVariation = item.variation_status === 1 && (item.variations?.length || 0) > 0;
+      const item = normalizeMenuItem(pendingSelection.item);
+      const needsVariation = (item.variations?.length || 0) > 0;
       let updatedSelection = { ...pendingSelection };
 
       if (needsVariation && !pendingSelection.selectedVariation) {
@@ -595,14 +607,15 @@ export default function FoodBot() {
   };
 
   const handleItemClick = (item) => {
-    const needsVariation = item.variation_status === 1 && (item.variations?.length || 0) > 0;
-    const hasAddons = item.addons_status === 1 && (item.addons?.length || 0) > 0;
-    const selection = { item, selectedVariation: null, selectedAddons: [] };
+    const normalizedItem = normalizeMenuItem(item || {});
+    const needsVariation = (normalizedItem.variations?.length || 0) > 0;
+    const hasAddons = (normalizedItem.addons?.length || 0) > 0;
+    const selection = { item: normalizedItem, selectedVariation: null, selectedAddons: [] };
     setPendingSelection(selection);
 
     if (needsVariation) {
       addAssistantMessage({
-        text: `You selected ${item.name}. Choose a variation below:`,
+        text: `You selected ${normalizedItem.name}. Choose a variation below:`,
         actions: buildSelectionActions(selection),
       });
       return;
@@ -610,8 +623,8 @@ export default function FoodBot() {
 
     addAssistantMessage({
       text: hasAddons
-        ? `You selected ${item.name}. You can choose add-ons before adding to cart.`
-        : `You selected ${item.name}.`,
+        ? `You selected ${normalizedItem.name}. You can choose add-ons before adding to cart.`
+        : `You selected ${normalizedItem.name}.`,
       actions: buildSelectionActions(selection),
     });
   };

@@ -1,3 +1,40 @@
+export const normalizeMenuItem = (item = {}, fallbackCategoryId = null) => {
+  const normalizedVariations = Array.isArray(item.variations)
+    ? item.variations
+    : Array.isArray(item.variation_data)
+      ? item.variation_data
+      : [];
+
+  const rawAddons = Array.isArray(item.addons)
+    ? item.addons
+    : Array.isArray(item.add_on)
+      ? item.add_on
+      : Array.isArray(item.addons_data)
+        ? item.addons_data
+        : [];
+
+  const normalizedAddons = rawAddons.map((addon) => ({
+    ...addon,
+    addon_id: Number(addon?.addon_id ?? addon?.id ?? 0),
+    name: addon?.name || addon?.addon_name || "Addon",
+    addon_name: addon?.addon_name || addon?.name || "Addon",
+    price: Number(addon?.price ?? addon?.addon_price ?? addon?.web_price ?? 0),
+  }));
+
+  return {
+    ...item,
+    category_id: item?.category_id ?? fallbackCategoryId,
+    variations: normalizedVariations,
+    variation_status:
+      Number(item?.variation_status ?? 0) === 1 || normalizedVariations.length > 0 ? 1 : 0,
+    addons: normalizedAddons,
+    addons_status:
+      Number(item?.addons_status ?? item?.addon_status ?? 0) === 1 || normalizedAddons.length > 0
+        ? 1
+        : 0,
+  };
+};
+
 // Helper function to get all items from menu data
 export const getItemsFromMenuData = (menuData) => {
   const items = [];
@@ -5,9 +42,8 @@ export const getItemsFromMenuData = (menuData) => {
     category.sub_category_data.forEach((subCategory) => {
       subCategory.item_data.forEach((item) => {
         items.push({
-          ...item,
+          ...normalizeMenuItem(item, subCategory.menu_id),
           is_customizable: true, // All items are customizable
-          category_id: subCategory.menu_id, // Add category_id for tax calculation
         });
       });
     });

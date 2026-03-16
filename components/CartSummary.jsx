@@ -77,10 +77,10 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                                 )}
 
                                 {/* Addons */}
-                                {item.addons.length > 0 && (
+                                {(item.addons || []).length > 0 && (
                                     <p className="text-xs text-gray-500 mt-1">
                                         Add-ons:{" "}
-                                        {item.addons.map((a) => a.addon_name).join(", ")}
+                                        {(item.addons || []).map((a) => a.addon_name || a.name).join(", ")}
                                     </p>
                                 )}
                             </div>
