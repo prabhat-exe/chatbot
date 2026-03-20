@@ -7,6 +7,7 @@ import { getItemsFromMenuData } from "../../utils/helpers";
 
 export default function ChatContainer({
     messages,
+    currencySymbol = "₹",
     isLoading,
     onItemClick,
     onAddToCart,
@@ -23,6 +24,7 @@ export default function ChatContainer({
                         <CustomizationCard
                             item={msg.selectedItem}
                             onAddToCart={onAddToCart}
+                            currencySymbol={currencySymbol}
                         />
                     )}
 
@@ -35,6 +37,7 @@ export default function ChatContainer({
                                         key={item.item_id}
                                         item={item}
                                         onClick={onItemClick}
+                                        currencySymbol={currencySymbol}
                                     />
                                 ))}
                             </div>

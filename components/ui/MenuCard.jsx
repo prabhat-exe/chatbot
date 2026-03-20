@@ -1,4 +1,4 @@
-export default function MenuCard({ item, onClick }) {
+export default function MenuCard({ item, onClick, currencySymbol = "₹" }) {
     return (
         <div
             onClick={() => onClick(item)}
@@ -39,7 +39,7 @@ export default function MenuCard({ item, onClick }) {
                         </h3>
                         {item.price > 0 && (
                             <span className="font-bold text-blue-900 text-sm whitespace-nowrap">
-                                ₹{item.price}
+                                {currencySymbol}{item.price}
                             </span>
                         )}
                     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onClose, onEmptyCart, getTotalTax, getTaxBreakdown ,isLoggedIn,onRequireLogin,onProceedCheckout}) {
+export default function CartSummary({ cart, currencySymbol = "₹", onRemoveItem, onUpdateQuantity, onClose, onEmptyCart, getTotalTax, getTaxBreakdown ,isLoggedIn,onRequireLogin,onProceedCheckout}) {
     if (cart.length === 0) {
         return (
             <div className="cart-empty text-gray-500">
@@ -71,7 +71,7 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                                 {/* Variation */}
                                 {item.selected_variation && (
                                     <p className="text-xs text-gray-500 mt-1">
-                                        {item.selected_variation.variation_name} • +₹
+                                        {item.selected_variation.variation_name} • +{currencySymbol}
                                         {item.selected_variation.variation_price}
                                     </p>
                                 )}
@@ -124,7 +124,7 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
 
                                 {/* Price */}
                                 <p className="font-semibold text-base text-gray-900 min-w-[80px] text-right">
-                                    ₹{(
+                                    {currencySymbol}{(
                                         item.total_price -
                                         (item.tax_details?.total_tax || 0) *
                                             item.quantity
@@ -142,7 +142,7 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                 {/* Subtotal */}
                 <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
                     <span>Subtotal</span>
-                    <span>₹{(subtotal - totalTax).toFixed(2)}</span>
+                    <span>{currencySymbol}{(subtotal - totalTax).toFixed(2)}</span>
                 </div>
 
                 {/* Tax Breakdown */}
@@ -155,7 +155,7 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                             <span>
                                 {taxName} ({taxData.percentage}%)
                             </span>
-                            <span>₹{taxData.amount.toFixed(2)}</span>
+                            <span>{currencySymbol}{taxData.amount.toFixed(2)}</span>
                         </div>
                     ))}
 
@@ -163,7 +163,7 @@ export default function CartSummary({ cart, onRemoveItem, onUpdateQuantity, onCl
                 <div className="flex justify-between items-center text-lg font-bold mt-3 pt-2 border-t border-gray-200">
                     <span>Total</span>
                     <span className="text-green-600">
-                        ₹{subtotal.toFixed(2)}
+                        {currencySymbol}{subtotal.toFixed(2)}
                     </span>
                 </div>
             </div>

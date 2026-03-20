@@ -39,6 +39,7 @@ export default function FoodBot() {
   const [restaurantsLoading, setRestaurantsLoading] = useState(true);
   const [restaurantsError, setRestaurantsError] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
+  const currencySymbol = (selectedRestaurant?.country_currency || "₹").trim() || "₹";
 
   useEffect(() => {
     const bootstrapRestaurants = async () => {
@@ -122,7 +123,7 @@ export default function FoodBot() {
   const buildVariationActions = (item) => {
     return (item.variations || []).map((variation) => ({
       id: `variation-${item.item_id}-${variation.variation_id}`,
-      label: `${variation.variation_name}${Number(variation.variation_price) > 0 ? ` • ₹${variation.variation_price}` : ""}`,
+      label: `${variation.variation_name}${Number(variation.variation_price) > 0 ? ` • ${currencySymbol}${variation.variation_price}` : ""}`,
       type: "select_variation",
       item,
       variation,
@@ -140,7 +141,7 @@ export default function FoodBot() {
       const isSelected = selectedAddonIds.has(addonId);
       return {
         id: `addon-${item.item_id}-${addonId}`,
-        label: `${isSelected ? "✓ " : ""}${addonName}${Number(addon.price) > 0 ? ` • +₹${addon.price}` : ""}`,
+        label: `${isSelected ? "✓ " : ""}${addonName}${Number(addon.price) > 0 ? ` • +${currencySymbol}${addon.price}` : ""}`,
         type: "toggle_addon",
         item,
         addon,
@@ -835,6 +836,7 @@ export default function FoodBot() {
             <div className="cart-view flex items-center justify-center min-h-full p-4">
               <CartSummary
                 cart={cart}
+                currencySymbol={currencySymbol}
                 onRemoveItem={removeFromCart}
                 onUpdateQuantity={updateQuantity}
                 onClose={() => {
@@ -859,6 +861,7 @@ export default function FoodBot() {
           ) : selectedRestaurant?.id ? (
             <ChatContainer
               messages={messages}
+              currencySymbol={currencySymbol}
               isLoading={isLoading}
               onItemClick={handleItemClick}
               onAddToCart={handleAddToCart}

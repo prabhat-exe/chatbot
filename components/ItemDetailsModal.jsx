@@ -7,7 +7,8 @@ export default function ItemDetailsModal({
     item,
     onAddToCart,
     onClose,
-    taxInfoMap = {}
+    taxInfoMap = {},
+    currencySymbol = "₹",
 }) {
     const [selectedVariation, setSelectedVariation] = useState(null);
     const [quantity, setQuantity] = useState(1);
@@ -152,7 +153,7 @@ export default function ItemDetailsModal({
                         <p className="item-modal-description">Customize your order</p>
                         <div className="price-qty-row">
                         {item.price > 0 && !item.variations?.length && (
-                            <span className="item-modal-price">₹{item.price}</span>
+                            <span className="item-modal-price">{currencySymbol}{item.price}</span>
                         )}
 
                         <div className="quantity-compact">
@@ -196,7 +197,7 @@ export default function ItemDetailsModal({
                                     >
                                         {v.variation_name}
                                         {Number(v.variation_price) > 0 && (
-                                            <span className="option-price">₹{v.variation_price}</span>
+                                            <span className="option-price">{currencySymbol}{v.variation_price}</span>
                                         )}
                                     </button>
                                 );
@@ -221,7 +222,7 @@ export default function ItemDetailsModal({
                                         className={`item-modal-option addon ${isSelected ? "selected" : ""}`}
                                     >
                                         {addon.name}
-                                        <span className="option-price">+₹{addon.price}</span>
+                                        <span className="option-price">+{currencySymbol}{addon.price}</span>
                                     </button>
                                 );
                             })}
@@ -237,17 +238,17 @@ export default function ItemDetailsModal({
                         <div className="tax-breakdown-preview">
                             <div className="tax-row">
                                 <span>Base Price</span>
-                                <span>₹{(unitPrice - taxDetails.total_tax).toFixed(2)}</span>
+                                <span>{currencySymbol}{(unitPrice - taxDetails.total_tax).toFixed(2)}</span>
                             </div>
                             {taxDetails.taxes.map((tax, idx) => (
                                 <div key={idx} className="tax-row">
                                     <span>{tax.name} ({tax.percentage}%)</span>
-                                    <span>₹{tax.amount.toFixed(2)}</span>
+                                    <span>{currencySymbol}{tax.amount.toFixed(2)}</span>
                                 </div>
                             ))}
                             <div className="tax-row total">
                                 <span>Unit Price (incl. tax)</span>
-                                <span>₹{unitPrice.toFixed(2)}</span>
+                                <span>{currencySymbol}{unitPrice.toFixed(2)}</span>
                             </div>
                         </div>
                     </div>
@@ -269,7 +270,7 @@ export default function ItemDetailsModal({
                             : ""
                             }`}
                     >
-                        Add to Cart • ₹{totalPrice.toFixed(2)}
+                        Add to Cart • {currencySymbol}{totalPrice.toFixed(2)}
                     </button>
                 </div>
             </div>

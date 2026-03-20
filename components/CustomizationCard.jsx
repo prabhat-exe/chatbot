@@ -4,7 +4,8 @@ import { useState } from "react";
 
 export default function CustomizationCard({
     item,
-    onAddToCart
+    onAddToCart,
+    currencySymbol = "₹",
 }) {
     const [selectedVariation, setSelectedVariation] = useState(null);
     const [quantity, setQuantity] = useState(1);
@@ -92,7 +93,7 @@ export default function CustomizationCard({
                                         {v.variation_name}
                                         {Number(v.variation_price) > 0 && (
                                             <span className="ml-1 text-xs">
-                                                +₹{v.variation_price}
+                                                +{currencySymbol}{v.variation_price}
                                             </span>
                                         )}
                                     </button>
@@ -133,7 +134,7 @@ export default function CustomizationCard({
                                         }`}
                                     >
                                         {addon.name}
-                                        <span className="text-xs ml-1">+₹{addon.price}</span>
+                                        <span className="text-xs ml-1">+{currencySymbol}{addon.price}</span>
                                     </button>
                                 );
                             })}
@@ -233,7 +234,7 @@ export default function CustomizationCard({
                                 : "bg-blue-900 hover:bg-blue-800 text-white"
                         }`}
                     >
-                        Add ₹{totalPrice.toFixed(2)}
+                        Add {currencySymbol}{totalPrice.toFixed(2)}
                     </button>
 
                 </div>
