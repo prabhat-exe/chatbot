@@ -3,6 +3,7 @@
 import MessageBubble from "../ui/MessageBubble";
 import MenuCard from "../ui/MenuCard";
 import CustomizationCard from "../CustomizationCard";
+import MealPlanSchedule from "./MealPlanSchedule";
 import { getItemsFromMenuData } from "../../utils/helpers";
 
 export default function ChatContainer({
@@ -28,13 +29,21 @@ export default function ChatContainer({
                         />
                     )}
 
-                    {msg.menuData && (
+                    {msg.mealPlan && (
+                        <MealPlanSchedule
+                            mealPlan={msg.mealPlan}
+                            products={msg.mealPlanProducts || []}
+                            currencySymbol={currencySymbol}
+                        />
+                    )}
+
+                    {msg.menuData && !msg.mealPlan && (
                         <div className="menu-section">
                             <p className="menu-label">Suggested items:</p>
                             <div className="menu-cards-grid">
-                                {getItemsFromMenuData(msg.menuData).map((item) => (
+                                {getItemsFromMenuData(msg.menuData).map((item, index) => (
                                     <MenuCard
-                                        key={item.item_id}
+                                        key={`${msg.id}-${item.item_id ?? item.name ?? "item"}-${index}`}
                                         item={item}
                                         onClick={onItemClick}
                                         currencySymbol={currencySymbol}

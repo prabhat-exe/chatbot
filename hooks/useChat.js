@@ -5,7 +5,11 @@ export function useChat() {
   const initialMessage = {
     id: "welcome",
     role: "assistant",
-    text: "Hi  I'm your AI food assistant!\n\nYou can:\n• Browse the menu\n• Say 'Show me burgers' or 'vegetarian options'\n• Try: 'I want a large burger with extra cheese'\n\nWhat are you craving?",
+    text: "Hi, I'm your AI food assistant!\n\nChoose how you'd like to order:",
+    actions: [
+      { id: "start-same-day-order", label: "Same Day Order", type: "start_same_day_order" },
+      { id: "start-meal-prep-order", label: "Meal Preparation & Order", type: "start_meal_plan_order" },
+    ],
   };
   const [messages, setMessages] = useState([
     initialMessage,

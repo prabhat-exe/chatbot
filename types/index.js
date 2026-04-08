@@ -41,6 +41,8 @@
  * @property {"user"|"assistant"} role
  * @property {string} text
  * @property {MenuData} [menuData]
+ * @property {Object} [mealPlan]
+ * @property {Array} [mealPlanProducts]
  * @property {CategoryItem[]} [categories]
  * @property {string} [component]
  * @property {MenuItem} [selectedItem]

@@ -26,7 +26,7 @@ export async function sendChatMessage(message, restaurantId) {
   const headers = { "Content-Type": "application/json" };
   const token = getAuthToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-
+  // console.log("Sending message to API:", { message, sessionId, restaurantId });
   const res = await fetch("/api/chat", {
     method: "POST",
     headers,
@@ -36,14 +36,45 @@ export async function sendChatMessage(message, restaurantId) {
       restaurant_id: restaurantId,
     }),
   });
-
+  // console.log("Response from API:", res);
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   return res.json();
 }
 
 export async function fetchRestaurants() {
-  const res = await fetch("/api/restaurants", { method: "GET" });
+  const res = await fetch("/api/restaurants", {
+    method: "GET",
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error(`Restaurants API error: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchMealPlanOptions() {
+  const res = await fetch("/api/meal-plan/options", { method: "GET" });
+  if (!res.ok) throw new Error(`Meal plan options API error: ${res.status}`);
+  return res.json();
+}
+
+export async function generateMealPlan(payload) {
+  const headers = { "Content-Type": "application/json" };
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch("/api/meal-plan/generate", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      ...payload,
+      session_id: getSessionId(),
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Meal plan generate API error: ${res.status} ${text}`);
+  }
+
   return res.json();
 }
 

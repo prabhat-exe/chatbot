@@ -1,6 +1,23 @@
 "use client";
 
-export default function CartSummary({ cart, currencySymbol = "₹", onRemoveItem, onUpdateQuantity, onClose, onEmptyCart, getTotalTax, getTaxBreakdown ,isLoggedIn,onRequireLogin,onProceedCheckout}) {
+export default function CartSummary({
+    cart,
+    currencySymbol = "₹",
+    onRemoveItem,
+    onUpdateQuantity,
+    onClose,
+    onEmptyCart,
+    getTotalTax,
+    getTaxBreakdown,
+    isLoggedIn,
+    onRequireLogin,
+    onProceedCheckout,
+    scheduledDate,
+    scheduledTime,
+    onScheduledDateChange,
+    onScheduledTimeChange,
+    minDate,
+}) {
     if (cart.length === 0) {
         return (
             <div className="cart-empty text-gray-500">
@@ -165,6 +182,36 @@ export default function CartSummary({ cart, currencySymbol = "₹", onRemoveItem
                     <span className="text-green-600">
                         {currencySymbol}{subtotal.toFixed(2)}
                     </span>
+                </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+                <h4 className="font-semibold text-sm text-gray-800">Schedule your order</h4>
+                <p className="mt-1 text-xs text-gray-600">
+                    You can place a future-day order today and pay once now.
+                </p>
+
+                <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1 text-sm text-gray-700">
+                        <span>Delivery / pickup date</span>
+                        <input
+                            type="date"
+                            min={minDate}
+                            value={scheduledDate}
+                            onChange={(e) => onScheduledDateChange && onScheduledDateChange(e.target.value)}
+                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 outline-none focus:border-blue-500"
+                        />
+                    </label>
+
+                    <label className="flex flex-col gap-1 text-sm text-gray-700">
+                        <span>Preferred time</span>
+                        <input
+                            type="time"
+                            value={scheduledTime}
+                            onChange={(e) => onScheduledTimeChange && onScheduledTimeChange(e.target.value)}
+                            className="rounded-lg border border-gray-200 bg-white px-3 py-2 outline-none focus:border-blue-500"
+                        />
+                    </label>
                 </div>
             </div>
             

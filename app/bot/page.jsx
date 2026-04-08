@@ -3,16 +3,33 @@
 import "./bot.css";
 import { useState, useEffect } from "react";
 import { useAuth } from "../../hooks/useAuth";
-import { completeProfile, fetchRestaurants, placeOrder } from "../../utils/api";
+import {
+  completeProfile,
+  fetchMealPlanOptions,
+  fetchRestaurants,
+  generateMealPlan,
+  placeOrder,
+} from "../../utils/api";
 import { clearSession } from "../../utils/sessionId";
 import { useCart } from "../../hooks/useCart";
 import { useChat } from "../../hooks/useChat";
-import { normalizeMenuItem } from "../../utils/helpers";
+import { calculateTaxFromSubCategory, normalizeMenuItem } from "../../utils/helpers";
 import ChatContainer from "../../components/chat/ChatContainer";
 import ChatInput from "../../components/chat/ChatInput";
 import CartSummary from "../../components/CartSummary";
 import AuthModal from "../../components/AuthModal";
 import ProfileModal from "../../components/ProfileModal";
+import DeliveryAddressModal from "../../components/DeliveryAddressModal";
+
+const getTodayDateString = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const normalizeNameKey = (value = "") => String(value).trim().toLowerCase();
 
 export default function FoodBot() {
   const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotalItems, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
@@ -39,7 +56,28 @@ export default function FoodBot() {
   const [restaurantsLoading, setRestaurantsLoading] = useState(true);
   const [restaurantsError, setRestaurantsError] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
+  const [orderFlow, setOrderFlow] = useState(null);
+  const [mealPlanOptions, setMealPlanOptions] = useState(null);
+  const [mealPlanConfig, setMealPlanConfig] = useState({
+    planType: "",
+    mealsPerDay: null,
+    awaitingNotes: false,
+  });
+  const [scheduledDate, setScheduledDate] = useState(getTodayDateString());
+  const [scheduledTime, setScheduledTime] = useState("");
+  const [showDeliveryAddressModal, setShowDeliveryAddressModal] = useState(false);
+  const [deliveryAddress, setDeliveryAddress] = useState({
+    address: "",
+    lat: "",
+    lng: "",
+  });
+  const [pendingCheckoutRequest, setPendingCheckoutRequest] = useState(null);
   const currencySymbol = (selectedRestaurant?.country_currency || "₹").trim() || "₹";
+  const headerSubtitle = showCart
+    ? "Review your order"
+    : orderFlow === "meal_plan"
+      ? "Plan, customize & order"
+      : "Chat to customize & order";
 
   useEffect(() => {
     const bootstrapRestaurants = async () => {
@@ -65,6 +103,23 @@ export default function FoodBot() {
     bootstrapRestaurants();
   }, []);
 
+  const refreshRestaurantSelection = async (restaurantId = selectedRestaurant?.id) => {
+    if (!restaurantId) return selectedRestaurant;
+
+    const res = await fetchRestaurants();
+    const list = res?.data || [];
+    setRestaurants(list);
+
+    const matched = list.find((restaurant) => String(restaurant.id) === String(restaurantId));
+    if (matched) {
+      setSelectedRestaurant(matched);
+      localStorage.setItem("selected_restaurant_id", String(matched.id));
+      return matched;
+    }
+
+    return selectedRestaurant;
+  };
+
   // Update tax info when menu data arrives
   useEffect(() => {
     const lastMessage = messages[messages.length - 1];
@@ -77,6 +132,16 @@ export default function FoodBot() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
+
+  useEffect(() => {
+    setDeliveryAddress({
+      address: "",
+      lat: "",
+      lng: "",
+    });
+    setPendingCheckoutRequest(null);
+    setShowDeliveryAddressModal(false);
+  }, [selectedRestaurant?.id]);
 
   const buildOrderItemFromSelection = (selection) => {
     const item = normalizeMenuItem(selection.item || {});
@@ -192,13 +257,213 @@ export default function FoodBot() {
     ];
   };
 
-  const executeCheckout = async () => {
+  const findMealPlanProduct = (products = [], itemName = "") => {
+    const target = normalizeNameKey(itemName);
+    if (!target) return null;
+
+    return (
+      products.find((product) => normalizeNameKey(product.product_name) === target) ||
+      products.find((product) => normalizeNameKey(product.product_name).includes(target)) ||
+      products.find((product) => target.includes(normalizeNameKey(product.product_name))) ||
+      null
+    );
+  };
+
+  const resolveMealPlanProduct = (products = [], plannedItem = null) => {
+    if (plannedItem && typeof plannedItem === "object" && plannedItem.product_id) {
+      return plannedItem;
+    }
+
+    const itemName =
+      typeof plannedItem === "string"
+        ? plannedItem
+        : plannedItem?.product_name || plannedItem?.name || plannedItem?.title || "";
+
+    return findMealPlanProduct(products, itemName);
+  };
+
+  const getTaxDetailsForMealPlanProduct = (product) => {
+    if (!product?.map_tax_class) {
+      return {
+        taxes: [],
+        total_tax: 0,
+        base_price: Number(product?.price_from ?? product?.price ?? 0),
+        final_price: Number(product?.price_from ?? product?.price ?? 0),
+      };
+    }
+
+    return calculateTaxFromSubCategory(
+      Number(product.price_from ?? product.price ?? 0),
+      product.map_tax_class
+    );
+  };
+
+  const buildMealPlanOrderItems = (mealPlan, products = []) => {
+    const itemMap = new Map();
+
+    (mealPlan?.days || []).forEach((day) => {
+      Object.values(day.meals || {}).forEach((plannedItems) => {
+        (plannedItems || []).forEach((plannedItem) => {
+          const product = resolveMealPlanProduct(products, plannedItem);
+          if (!product?.product_id) return;
+
+          const itemId = Number(product.product_id);
+          const key = `${itemId}|no-variation|no-addons`;
+          const unitPrice = Number(product.price_from ?? product.price ?? 0);
+
+          if (!itemMap.has(key)) {
+            itemMap.set(key, {
+              cart_key: key,
+              item_id: itemId,
+              name: product.product_name,
+              image: product.image_url,
+              category_id: product.category_id,
+              selected_variation: null,
+              addons: [],
+              unit_price: unitPrice,
+              quantity: 0,
+              total_price: 0,
+              tax_details: getTaxDetailsForMealPlanProduct(product),
+            });
+          }
+
+          const existing = itemMap.get(key);
+          existing.quantity += 1;
+          existing.total_price = Number((existing.unit_price * existing.quantity).toFixed(2));
+        });
+      });
+    });
+
+    return Array.from(itemMap.values());
+  };
+
+  const getTotalTaxForItems = (items = []) =>
+    items.reduce((total, item) => total + ((item.tax_details?.total_tax || 0) * Number(item.quantity || 0)), 0);
+
+  const resetMealPlanConfig = () => {
+    setMealPlanConfig({
+      planType: "",
+      mealsPerDay: null,
+      awaitingNotes: false,
+    });
+  };
+
+  const getStartFlowActions = () => ([
+    { id: `start-same-day-order-${Date.now()}`, label: "Same Day Order", type: "start_same_day_order" },
+    { id: `start-meal-plan-order-${Date.now()}`, label: "Meal Preparation & Order", type: "start_meal_plan_order" },
+  ]);
+
+  const buildMealPlanDurationActions = (options) =>
+    (options?.plan_durations || []).map((duration) => ({
+      id: `meal-plan-duration-${duration.key}`,
+      label: duration.label,
+      type: "meal_plan_select_duration",
+      planType: duration.key,
+    }));
+
+  const buildMealsPerDayActions = (options) =>
+    (options?.meals_per_day_options || []).map((count) => ({
+      id: `meal-plan-meals-${count}`,
+      label: `${count} Meals / Day`,
+      type: "meal_plan_select_meals_per_day",
+      mealsPerDay: count,
+    }));
+
+  const promptForMealPlanNotes = () => {
+    setMealPlanConfig((prev) => ({ ...prev, awaitingNotes: true }));
+    addAssistantMessage({
+      text:
+        mealPlanOptions?.notes_placeholder ||
+        "Share your food preferences for the meal plan, or skip this step.",
+      actions: [
+        { id: `meal-plan-skip-notes-${Date.now()}`, label: "Skip Notes", type: "meal_plan_skip_notes" },
+      ],
+    });
+  };
+
+  const loadMealPlanOptions = async () => {
+    const options = await fetchMealPlanOptions();
+    setMealPlanOptions(options);
+    addAssistantMessage({
+      text: "Choose your meal plan duration:",
+      actions: buildMealPlanDurationActions(options),
+    });
+    return options;
+  };
+
+  const runMealPlanGeneration = async (notes = "") => {
+    if (!selectedRestaurant?.id) {
+      addAssistantMessage({
+        text: "Please select a restaurant first to generate a meal plan.",
+      });
+      return;
+    }
+
+    if (!mealPlanConfig.planType || !mealPlanConfig.mealsPerDay) {
+      addAssistantMessage({
+        text: "Please complete the meal plan options first.",
+      });
+      return;
+    }
+
+    setMealPlanConfig((prev) => ({ ...prev, awaitingNotes: false }));
+    addAssistantMessage({
+      text: "Creating your meal plan now. This may take a few moments.",
+    });
+
+    try {
+      const result = await generateMealPlan({
+        restaurant_id: selectedRestaurant.id,
+        plan_type: mealPlanConfig.planType,
+        meals_per_day: mealPlanConfig.mealsPerDay,
+        notes,
+      });
+
+      if (!result?.success) {
+        addAssistantMessage({
+          text: result?.error?.message || "Meal plan generation failed. Please try again.",
+          actions: getStartFlowActions(),
+        });
+        return;
+      }
+
+      addAssistantMessage({
+        text: result.reply || "Your meal plan is ready.",
+        mealPlan: result.meal_plan || undefined,
+        mealPlanProducts: result.data?.products || [],
+        actions: [
+          {
+            id: `meal-plan-add-all-${Date.now()}`,
+            label: "Add Whole Plan to Cart",
+            type: "meal_plan_add_all_to_cart",
+            mealPlan: result.meal_plan || undefined,
+            products: result.data?.products || [],
+          },
+          {
+            id: `meal-plan-place-all-${Date.now()}`,
+            label: "Place Order All At Once",
+            type: "meal_plan_place_all_at_once",
+            mealPlan: result.meal_plan || undefined,
+            products: result.data?.products || [],
+          },
+        ],
+      });
+    } catch (error) {
+      console.error(error);
+      addAssistantMessage({
+        text: "Meal plan generation failed due to a server/network issue. Please retry.",
+        actions: getStartFlowActions(),
+      });
+    }
+  };
+
+  const executeCheckout = async (checkoutItems = cart, options = {}) => {
     try {
       if (!selectedRestaurant?.id) {
         addAssistantMessage({ text: "Please select a restaurant before checkout." });
         return;
       }
-      if (!cart.length) {
+      if (!checkoutItems.length) {
         addAssistantMessage({ text: "Your cart is empty. Add an item first." });
         return;
       }
@@ -224,23 +489,54 @@ export default function FoodBot() {
         return;
       }
 
-      const totalQuantity = cart.reduce((sum, item) => sum + Number(item.quantity), 0);
+      const latestRestaurant = await refreshRestaurantSelection(selectedRestaurant.id);
+      const restaurantLat = Number(latestRestaurant?.latitude);
+      const restaurantLng = Number(latestRestaurant?.longitude);
+      const deliveryRadiusKm = Number(latestRestaurant?.delivery_radius_km);
+
+      if (
+        !Number.isFinite(restaurantLat) ||
+        !Number.isFinite(restaurantLng) ||
+        !Number.isFinite(deliveryRadiusKm) ||
+        deliveryRadiusKm <= 0
+      ) {
+        addAssistantMessage({
+          text: "This restaurant has not configured its delivery area yet, so delivery checkout is unavailable right now.",
+        });
+        return;
+      }
+
+      if (!options.addressConfirmed) {
+        setPendingCheckoutRequest({ checkoutItems, options });
+        setShowDeliveryAddressModal(true);
+        return;
+      }
+
+      const totalQuantity = checkoutItems.reduce((sum, item) => sum + Number(item.quantity), 0);
       const totalPrice = Number(
-        cart.reduce((sum, item) => sum + Number(item.total_price), 0).toFixed(2)
+        checkoutItems.reduce((sum, item) => sum + Number(item.total_price), 0).toFixed(2)
       );
+      const today = getTodayDateString();
+      const isFutureOrder = Boolean(scheduledDate && scheduledDate > today);
 
       const payload = {
         user_id: userId,
         store_id: Number(selectedRestaurant.id),
-        store_name: selectedRestaurant.name || "",
+        store_name: latestRestaurant?.name || selectedRestaurant.name || "",
         order_category: 1,
         order_type: 1,
         total_quantity: totalQuantity,
         total_price: totalPrice,
-        total_tax: Number((getTotalTax ? getTotalTax() : 0).toFixed(2)),
+        total_tax: Number(getTotalTaxForItems(checkoutItems).toFixed(2)),
         order_comments: "",
         payment_method: "upi",
-        items: cart.map((item) => ({
+        selectedDate: scheduledDate || "",
+        time: scheduledTime || "",
+        pre_order_status: isFutureOrder ? 1 : 0,
+        delivery_address: deliveryAddress.address,
+        address_lat: Number(deliveryAddress.lat),
+        address_long: Number(deliveryAddress.lng),
+        items: checkoutItems.map((item) => ({
           item_id: Number(item.item_id),
           item_name: item.name,
           price: Number(item.unit_price),
@@ -266,10 +562,25 @@ export default function FoodBot() {
 
       const result = await placeOrder(payload);
       if (result?.success) {
-        clearCart();
+        if (!options.keepCartOnSuccess) {
+          clearCart();
+        }
         setShowCart(false);
+        setShowDeliveryAddressModal(false);
+        setPendingCheckoutRequest(null);
+        setDeliveryAddress({
+          address: "",
+          lat: "",
+          lng: "",
+        });
+        setScheduledDate(getTodayDateString());
+        setScheduledTime("");
         addAssistantMessage({
-          text: `Your order is placed successfully. Order ID: ${result.order_id}`,
+          text: options.successMessage || (
+            isFutureOrder
+              ? `Your future order is placed successfully and payment is completed. Order ID: ${result.order_id}`
+              : `Your order is placed successfully. Order ID: ${result.order_id}`
+          ),
         });
       } else {
         addAssistantMessage({
@@ -279,13 +590,132 @@ export default function FoodBot() {
     } catch (err) {
       console.error(err);
       addAssistantMessage({
-        text: "Order placement failed due to a server/network issue. Please retry.",
+        text: err?.message?.includes("422")
+          ? "Order placement failed. Please check the delivery address and make sure the pin is inside the allowed radius."
+          : "Order placement failed due to a server/network issue. Please retry.",
       });
     }
   };
 
   const handleMessageAction = async (action) => {
     if (!action?.type) return;
+
+    if (
+      action.type !== "start_same_day_order" &&
+      action.type !== "start_meal_plan_order" &&
+      !selectedRestaurant?.id
+    ) {
+      addAssistantMessage({
+        text: "Please select a restaurant first, then continue.",
+        actions: getStartFlowActions(),
+      });
+      return;
+    }
+
+    if (action.type === "start_same_day_order") {
+      if (!selectedRestaurant?.id) {
+        addAssistantMessage({
+          text: "Please select a restaurant first, then you can continue with same day ordering.",
+          actions: getStartFlowActions(),
+        });
+        return;
+      }
+
+      setOrderFlow("same_day");
+      resetMealPlanConfig();
+      addUserMessage("Same Day Order");
+      addAssistantMessage({
+        text: "Same day order selected. You can continue with the current flow. Ask for any dish or category to get started.",
+      });
+      return;
+    }
+
+    if (action.type === "start_meal_plan_order") {
+      addUserMessage("Meal Preparation & Order");
+      if (!selectedRestaurant?.id) {
+        addAssistantMessage({
+          text: "Please select a restaurant first to generate a meal plan.",
+          actions: getStartFlowActions(),
+        });
+        return;
+      }
+
+      setOrderFlow("meal_plan");
+      resetMealPlanConfig();
+      try {
+        await loadMealPlanOptions();
+      } catch (error) {
+        console.error(error);
+        addAssistantMessage({
+          text: "I couldn't load meal plan options right now. Please try again.",
+          actions: getStartFlowActions(),
+        });
+      }
+      return;
+    }
+
+    if (action.type === "meal_plan_select_duration") {
+      setMealPlanConfig((prev) => ({
+        ...prev,
+        planType: action.planType,
+        awaitingNotes: false,
+      }));
+      addUserMessage(action.label);
+      addAssistantMessage({
+        text: "How many meals would you like per day?",
+        actions: buildMealsPerDayActions(mealPlanOptions),
+      });
+      return;
+    }
+
+    if (action.type === "meal_plan_select_meals_per_day") {
+      setMealPlanConfig((prev) => ({
+        ...prev,
+        mealsPerDay: action.mealsPerDay,
+        awaitingNotes: false,
+      }));
+      addUserMessage(action.label);
+      promptForMealPlanNotes();
+      return;
+    }
+
+    if (action.type === "meal_plan_skip_notes") {
+      addUserMessage("Skip Notes");
+      await runMealPlanGeneration("");
+      return;
+    }
+
+    if (action.type === "meal_plan_add_all_to_cart") {
+      const mealPlanItems = buildMealPlanOrderItems(action.mealPlan, action.products);
+      if (!mealPlanItems.length) {
+        addAssistantMessage({ text: "I couldn't prepare the full meal plan items for cart." });
+        return;
+      }
+
+      for (const item of mealPlanItems) {
+        await addToCart(item);
+      }
+
+      addAssistantMessage({
+        text: "The whole meal plan has been added to your cart. You can review it and place one combined order.",
+        actions: buildPostAddActions(),
+      });
+      return;
+    }
+
+    if (action.type === "meal_plan_place_all_at_once") {
+      const mealPlanItems = buildMealPlanOrderItems(action.mealPlan, action.products);
+      if (!mealPlanItems.length) {
+        addAssistantMessage({ text: "I couldn't prepare the full meal plan for checkout." });
+        return;
+      }
+
+      await executeCheckout(mealPlanItems, {
+        keepCartOnSuccess: true,
+        successMessage: "Your full meal plan order has been placed successfully in one go.",
+      });
+      return;
+    }
 
     if (action.type === "cancel_selection") {
       setPendingSelection(null);
@@ -462,6 +892,12 @@ export default function FoodBot() {
     const lower = userText.toLowerCase();
 
     if (!userText) return;
+
+    if (mealPlanConfig.awaitingNotes) {
+      addUserMessage(userText);
+      await runMealPlanGeneration(userText);
+      return;
+    }
 
     if (lower.includes("place order")) {
       addUserMessage(userText);
@@ -640,10 +1076,17 @@ export default function FoodBot() {
     if (switching) {
       clearCart();
       clearSession();
+      resetMealPlanConfig();
+      setOrderFlow(null);
+      setScheduledDate(getTodayDateString());
+      setScheduledTime("");
       resetChat();
-      addAssistantMessage({
-        text: `Switched to ${restaurant.name}. I have reset the previous cart and chat session.`,
-      });
+      setTimeout(() => {
+        addAssistantMessage({
+          text: `Switched to ${restaurant.name}. Choose how you'd like to continue.`,
+          actions: getStartFlowActions(),
+        });
+      }, 0);
     }
   };
 
@@ -747,7 +1190,7 @@ export default function FoodBot() {
         </div>
         <div className="header-info">
           <h1>{showCart ? 'Your Cart' : 'AI Food Bot'}</h1>
-          <p>{showCart ? 'Review your order' : 'Chat to customize & order'}</p>
+          <p>{headerSubtitle}</p>
           <div className="mt-2">
             <select
               value={selectedRestaurant?.id || ""}
@@ -849,6 +1292,11 @@ export default function FoodBot() {
                 getTotalTax={getTotalTax}
                 getTaxBreakdown={getTaxBreakdown}
                 isLoggedIn={isLoggedIn}
+                scheduledDate={scheduledDate}
+                scheduledTime={scheduledTime}
+                onScheduledDateChange={setScheduledDate}
+                onScheduledTimeChange={setScheduledTime}
+                minDate={getTodayDateString()}
                 onRequireLogin={() => {
                   setShowCart(false);
                   setAuthStep("phone");
@@ -858,7 +1306,13 @@ export default function FoodBot() {
 
               />
             </div>
-          ) : selectedRestaurant?.id ? (
+          ) : (
+            <>
+              {!selectedRestaurant?.id && (
+                <div className="px-4 pt-4 text-center text-sm text-gray-500">
+                  Select a restaurant from the header to continue with ordering or meal planning.
+                </div>
+              )}
             <ChatContainer
               messages={messages}
               currencySymbol={currencySymbol}
@@ -868,19 +1322,31 @@ export default function FoodBot() {
               onMessageAction={handleMessageAction}
               messagesEndRef={messagesEndRef}
             />
-          ) : (
-            <div className="flex h-full items-center justify-center px-6 text-center text-gray-600">
-              <div>
-                <h3 className="text-lg font-semibold">Select a restaurant to start</h3>
-                <p className="mt-2 text-sm">Choose a restaurant from the dropdown in the header to load menu suggestions.</p>
-              </div>
-            </div>
+            </>
           )}
         </div>
       </main>
 
       {/* Bottom Input */}
       <ChatInput onSend={handleSendMessage} disabled={isLoading || !selectedRestaurant?.id} />
+
+      <DeliveryAddressModal
+        isOpen={showDeliveryAddressModal}
+        restaurant={selectedRestaurant}
+        value={deliveryAddress}
+        onChange={setDeliveryAddress}
+        onClose={() => {
+          setShowDeliveryAddressModal(false);
+          setPendingCheckoutRequest(null);
+        }}
+        onConfirm={() => {
+          const pendingRequest = pendingCheckoutRequest || { checkoutItems: cart, options: {} };
+          executeCheckout(pendingRequest.checkoutItems, {
+            ...(pendingRequest.options || {}),
+            addressConfirmed: true,
+          });
+        }}
+      />
 
       {/* Floating Item Animation */}
       {floatingItem && (
