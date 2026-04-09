@@ -2,19 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { sendChatMessage } from "../utils/api";
 
 export function useChat() {
-  const initialMessage = {
-    id: "welcome",
-    role: "assistant",
-    text: "Hi, I'm your AI food assistant!\n\nChoose how you'd like to order:",
-    actions: [
-      { id: "start-same-day-order", label: "Same Day Order", type: "start_same_day_order" },
-      { id: "start-meal-prep-order", label: "Meal Preparation & Order", type: "start_meal_plan_order" },
-    ],
-  };
-  const [messages, setMessages] = useState([
-    initialMessage,
-  ]);
+  const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("");
   const messagesEndRef = useRef(null);
 
   // Auto-scroll to bottom when messages change
@@ -34,6 +24,7 @@ export function useChat() {
     if (!userText.trim()) return;
     if (!restaurantId) return;
 
+    setLoadingMessage("");
     setIsLoading(true);
 
     // Add user message
@@ -95,12 +86,15 @@ export function useChat() {
   };
 
   const resetChat = () => {
-    setMessages([initialMessage]);
+    setMessages([]);
   };
 
   return {
     messages,
     isLoading,
+    loadingMessage,
+    setLoadingMessage,
+    setIsLoading,
     sendMessage,
     addAssistantMessage,
     addUserMessage,

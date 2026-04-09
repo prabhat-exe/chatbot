@@ -74,7 +74,7 @@ export async function generateMealPlan(payload) {
     const text = await res.text();
     throw new Error(`Meal plan generate API error: ${res.status} ${text}`);
   }
-
+  // console.log(res.json());
   return res.json();
 }
 

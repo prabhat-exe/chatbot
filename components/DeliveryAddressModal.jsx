@@ -71,6 +71,7 @@ export default function DeliveryAddressModal({
   onClose,
   onConfirm,
 }) {
+  const overlayRef = useRef(null);
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const deliveryMarkerRef = useRef(null);
@@ -104,6 +105,19 @@ export default function DeliveryAddressModal({
   const hasAddressText = String(value?.address || "").trim().length > 0;
   const hasCoordinates = selectedLat !== null && selectedLng !== null;
   const canSubmit = hasAddressText && hasCoordinates && canValidateRadius && isWithinRadius;
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        onClose?.();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -280,10 +294,18 @@ export default function DeliveryAddressModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[70] overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm">
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-[70] overflow-y-auto bg-slate-950/55 p-4 backdrop-blur-sm"
+      onMouseDown={(event) => {
+        if (event.target === overlayRef.current) {
+          onClose?.();
+        }
+      }}
+    >
       <div className="mx-auto flex min-h-full max-w-6xl items-center justify-center">
-        <div className="w-full overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.24)]">
-          <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-[linear-gradient(135deg,#f8fbff_0%,#eef5ff_100%)] px-6 py-5">
+        <div className="flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.24)]">
+          <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-[linear-gradient(135deg,#f8fbff_0%,#eef5ff_100%)] px-6 py-5">
             <div>
               <div className="inline-flex rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">
                 Checkout Step
@@ -303,7 +325,7 @@ export default function DeliveryAddressModal({
             </button>
           </div>
 
-          <div className="grid gap-0 lg:grid-cols-[360px_1fr]">
+          <div className="grid flex-1 gap-0 overflow-y-auto lg:grid-cols-[360px_1fr]">
             <div className="border-b border-slate-200 bg-slate-50/70 p-5 lg:border-b-0 lg:border-r">
               <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
@@ -451,7 +473,7 @@ export default function DeliveryAddressModal({
             </div>
           </div>
 
-          <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-slate-200 bg-white px-6 py-4 shadow-[0_-10px_30px_rgba(15,23,42,0.08)] sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-slate-500">
               Confirm the delivery address only after the map pin matches the exact drop point.
             </p>

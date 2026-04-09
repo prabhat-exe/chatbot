@@ -1,7 +1,7 @@
 "use client";
 
 import "./bot.css";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import {
   completeProfile,
@@ -30,10 +30,26 @@ const getTodayDateString = () => {
 };
 
 const normalizeNameKey = (value = "") => String(value).trim().toLowerCase();
+const DEFAULT_DELIVERY_ADDRESS = {
+  address: "",
+  lat: "",
+  lng: "",
+};
 
 export default function FoodBot() {
   const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotalItems, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
-  const { messages, isLoading, sendMessage, addAssistantMessage, addUserMessage, messagesEndRef, resetChat } = useChat();
+  const {
+    messages,
+    isLoading,
+    loadingMessage,
+    setLoadingMessage,
+    setIsLoading,
+    sendMessage,
+    addAssistantMessage,
+    addUserMessage,
+    messagesEndRef,
+    resetChat,
+  } = useChat();
   const { isLoggedIn, login, verifyOtp, logout } = useAuth();
   const [showAuthInline, setShowAuthInline] = useState(false);
   const [authStep, setAuthStep] = useState('phone');
@@ -66,18 +82,18 @@ export default function FoodBot() {
   const [scheduledDate, setScheduledDate] = useState(getTodayDateString());
   const [scheduledTime, setScheduledTime] = useState("");
   const [showDeliveryAddressModal, setShowDeliveryAddressModal] = useState(false);
-  const [deliveryAddress, setDeliveryAddress] = useState({
-    address: "",
-    lat: "",
-    lng: "",
-  });
+  const [deliveryAddress, setDeliveryAddress] = useState(DEFAULT_DELIVERY_ADDRESS);
   const [pendingCheckoutRequest, setPendingCheckoutRequest] = useState(null);
+  const hasShownWelcomePromptRef = useRef(false);
   const currencySymbol = (selectedRestaurant?.country_currency || "₹").trim() || "₹";
   const headerSubtitle = showCart
     ? "Review your order"
     : orderFlow === "meal_plan"
       ? "Plan, customize & order"
       : "Chat to customize & order";
+  const deliveryAddressStorageKey = selectedRestaurant?.id
+    ? `delivery_address_${selectedRestaurant.id}`
+    : null;
 
   useEffect(() => {
     const bootstrapRestaurants = async () => {
@@ -134,14 +150,50 @@ export default function FoodBot() {
   }, [messages.length]);
 
   useEffect(() => {
-    setDeliveryAddress({
-      address: "",
-      lat: "",
-      lng: "",
-    });
+    if (typeof window === "undefined") return;
+
+    if (!deliveryAddressStorageKey) {
+      setDeliveryAddress(DEFAULT_DELIVERY_ADDRESS);
+      return;
+    }
+
+    try {
+      const savedAddress = localStorage.getItem(deliveryAddressStorageKey);
+      if (savedAddress) {
+        const parsed = JSON.parse(savedAddress);
+        setDeliveryAddress({
+          address: String(parsed?.address || ""),
+          lat: String(parsed?.lat || ""),
+          lng: String(parsed?.lng || ""),
+        });
+      } else {
+        setDeliveryAddress(DEFAULT_DELIVERY_ADDRESS);
+      }
+    } catch (error) {
+      console.error("Failed to restore delivery address", error);
+      setDeliveryAddress(DEFAULT_DELIVERY_ADDRESS);
+    }
+
     setPendingCheckoutRequest(null);
     setShowDeliveryAddressModal(false);
-  }, [selectedRestaurant?.id]);
+  }, [deliveryAddressStorageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !deliveryAddressStorageKey) return;
+
+    const hasSavedValue = Boolean(
+      String(deliveryAddress.address || "").trim() ||
+      String(deliveryAddress.lat || "").trim() ||
+      String(deliveryAddress.lng || "").trim()
+    );
+
+    if (!hasSavedValue) {
+      localStorage.removeItem(deliveryAddressStorageKey);
+      return;
+    }
+
+    localStorage.setItem(deliveryAddressStorageKey, JSON.stringify(deliveryAddress));
+  }, [deliveryAddress, deliveryAddressStorageKey]);
 
   const buildOrderItemFromSelection = (selection) => {
     const item = normalizeMenuItem(selection.item || {});
@@ -353,6 +405,19 @@ export default function FoodBot() {
     { id: `start-meal-plan-order-${Date.now()}`, label: "Meal Preparation & Order", type: "start_meal_plan_order" },
   ]);
 
+  const buildWelcomeMessage = () => ({
+    text: "Hi, I'm your AI food assistant!\n\nChoose how you'd like to order:",
+    actions: getStartFlowActions(),
+  });
+
+  useEffect(() => {
+    if (restaurantsLoading || restaurantsError || hasShownWelcomePromptRef.current) return;
+
+    hasShownWelcomePromptRef.current = true;
+    addAssistantMessage(buildWelcomeMessage());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantsLoading, restaurantsError]);
+
   const buildMealPlanDurationActions = (options) =>
     (options?.plan_durations || []).map((duration) => ({
       id: `meal-plan-duration-${duration.key}`,
@@ -407,9 +472,8 @@ export default function FoodBot() {
     }
 
     setMealPlanConfig((prev) => ({ ...prev, awaitingNotes: false }));
-    addAssistantMessage({
-      text: "Creating your meal plan now. This may take a few moments.",
-    });
+    setLoadingMessage("Creating your meal plan now. This may take a few moments.");
+    setIsLoading(true);
 
     try {
       const result = await generateMealPlan({
@@ -454,6 +518,9 @@ export default function FoodBot() {
         text: "Meal plan generation failed due to a server/network issue. Please retry.",
         actions: getStartFlowActions(),
       });
+    } finally {
+      setIsLoading(false);
+      setLoadingMessage("");
     }
   };
 
@@ -568,11 +635,6 @@ export default function FoodBot() {
         setShowCart(false);
         setShowDeliveryAddressModal(false);
         setPendingCheckoutRequest(null);
-        setDeliveryAddress({
-          address: "",
-          lat: "",
-          lng: "",
-        });
         setScheduledDate(getTodayDateString());
         setScheduledTime("");
         addAssistantMessage({
@@ -625,7 +687,7 @@ export default function FoodBot() {
       resetMealPlanConfig();
       addUserMessage("Same Day Order");
       addAssistantMessage({
-        text: "Same day order selected. You can continue with the current flow. Ask for any dish or category to get started.",
+        text: "Same day order selected. Ask for any dish or category to get started.",
       });
       return;
     }
@@ -1081,12 +1143,10 @@ export default function FoodBot() {
       setScheduledDate(getTodayDateString());
       setScheduledTime("");
       resetChat();
-      setTimeout(() => {
-        addAssistantMessage({
-          text: `Switched to ${restaurant.name}. Choose how you'd like to continue.`,
-          actions: getStartFlowActions(),
-        });
-      }, 0);
+      addAssistantMessage({
+        text: `Switched to ${restaurant.name}. Choose how you'd like to continue.`,
+        actions: getStartFlowActions(),
+      });
     }
   };
 
@@ -1308,15 +1368,11 @@ export default function FoodBot() {
             </div>
           ) : (
             <>
-              {!selectedRestaurant?.id && (
-                <div className="px-4 pt-4 text-center text-sm text-gray-500">
-                  Select a restaurant from the header to continue with ordering or meal planning.
-                </div>
-              )}
             <ChatContainer
               messages={messages}
               currencySymbol={currencySymbol}
               isLoading={isLoading}
+              loadingMessage={loadingMessage}
               onItemClick={handleItemClick}
               onAddToCart={handleAddToCart}
               onMessageAction={handleMessageAction}

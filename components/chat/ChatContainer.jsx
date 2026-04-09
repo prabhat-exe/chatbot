@@ -10,6 +10,7 @@ export default function ChatContainer({
     messages,
     currencySymbol = "₹",
     isLoading,
+    loadingMessage,
     onItemClick,
     onAddToCart,
     onMessageAction,
@@ -19,7 +20,7 @@ export default function ChatContainer({
         <div className="chat-container">
             {messages.map((msg) => (
                 <div key={msg.id}>
-                    <MessageBubble message={msg} onAction={onMessageAction} />
+                    {!msg.mealPlan && <MessageBubble message={msg} onAction={onMessageAction} />}
 
                     {msg.component === "customization" && msg.selectedItem && (
                         <CustomizationCard
@@ -36,6 +37,8 @@ export default function ChatContainer({
                             currencySymbol={currencySymbol}
                         />
                     )}
+
+                    {msg.mealPlan && <MessageBubble message={msg} onAction={onMessageAction} />}
 
                     {msg.menuData && !msg.mealPlan && (
                         <div className="menu-section">
@@ -58,6 +61,7 @@ export default function ChatContainer({
             {isLoading && (
                 <div className="message-wrapper assistant">
                     <div className="message-bubble assistant">
+                        {loadingMessage && <div className="message-text">{loadingMessage}</div>}
                         <div className="typing-indicator">
                             <span></span>
                             <span></span>

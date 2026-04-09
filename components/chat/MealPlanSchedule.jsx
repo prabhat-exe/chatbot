@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo, useState } from "react";
+
 function normalizeName(value = "") {
     return String(value).trim().toLowerCase();
 }
@@ -30,56 +32,64 @@ function resolvePlannedProduct(products, item) {
     );
 }
 
-function ProductDetails({ product, itemName, currencySymbol }) {
+function formatSlotLabel(slot = "") {
+    return slot.replace(/(^\w|\s\w)/g, (match) => match.toUpperCase());
+}
+
+function getVariationSummary(product, currencySymbol) {
+    if (!Array.isArray(product?.variations) || product.variations.length === 0) return "";
+
+    return product.variations
+        .map((variation) => {
+            const name = variation.variation_name || "Option";
+            const price = Number(variation.variation_price ?? 0);
+            return `${name} ${currencySymbol}${price}`;
+        })
+        .join(" | ");
+}
+
+function parseWeekInfo(day) {
+    const label = String(day?.label || "");
+    const match = label.match(/Week\s+(\d+)\s*-\s*Day\s+(\d+)/i);
+
+    if (match) {
+        return {
+            weekNumber: Number(match[1]),
+            dayInWeek: Number(match[2]),
+        };
+    }
+
+    const absoluteDay = Number(day?.day || 1);
+    const weekNumber = Math.floor((absoluteDay - 1) / 5) + 1;
+    const dayInWeek = ((absoluteDay - 1) % 5) + 1;
+
+    return { weekNumber, dayInWeek };
+}
+
+function ProductLine({ product, itemName, currencySymbol }) {
     if (!product) {
         return (
-            <div className="meal-plan-item-card">
-                <div className="meal-plan-item-header">
-                    <span className="meal-plan-item-name">{itemName}</span>
-                </div>
-                <p className="meal-plan-item-meta">Detailed menu info is not available for this item.</p>
+            <div className="meal-plan-line">
+                <span className="meal-plan-line-name">{itemName}</span>
             </div>
         );
     }
 
     const displayCurrency = currencySymbol || product.currency || "₹";
+    const variationSummary = getVariationSummary(product, displayCurrency);
+    const basePrice = product.price_from ?? product.price ?? 0;
 
     return (
-        <div className="meal-plan-item-card">
-            <div className="meal-plan-item-header">
-                <span className="meal-plan-item-name">
-                    {product.product_name}
-                </span>
-                <span className="meal-plan-item-price">
-                    {displayCurrency}{product.price_from ?? product.price ?? 0}
-                </span>
+        <div className="meal-plan-line">
+            <div className="meal-plan-line-main">
+                <span className="meal-plan-line-name">{product.product_name}</span>
+                {variationSummary ? (
+                    <span className="meal-plan-line-variants">{variationSummary}</span>
+                ) : null}
             </div>
-
-            {Array.isArray(product.variations) && product.variations.length > 0 && (
-                <div className="meal-plan-chip-row">
-                    {product.variations.map((variation) => (
-                        <span
-                            key={`${product.product_id}-${variation.variation_id}`}
-                            className="meal-plan-chip"
-                        >
-                            {variation.variation_name} • {displayCurrency}{variation.variation_price}
-                        </span>
-                    ))}
-                </div>
-            )}
-
-            {Array.isArray(product.addons) && product.addons.length > 0 && (
-                <div className="meal-plan-chip-row">
-                    {product.addons.map((addon) => (
-                        <span
-                            key={`${product.product_id}-addon-${addon.addon_id}`}
-                            className="meal-plan-chip meal-plan-chip-muted"
-                        >
-                            {addon.addon_name || addon.name} • +{displayCurrency}{addon.price}
-                        </span>
-                    ))}
-                </div>
-            )}
+            <span className="meal-plan-line-price">
+                {displayCurrency}{basePrice}
+            </span>
         </div>
     );
 }
@@ -89,44 +99,116 @@ export default function MealPlanSchedule({
     products = [],
     currencySymbol,
 }) {
-    if (!mealPlan?.days?.length) return null;
+    const weekGroups = useMemo(() => {
+        if (!mealPlan?.days?.length) return [];
+
+        const grouped = new Map();
+
+        mealPlan.days.forEach((day) => {
+            const { weekNumber, dayInWeek } = parseWeekInfo(day);
+            const weekKey = `week-${weekNumber}`;
+
+            if (!grouped.has(weekKey)) {
+                grouped.set(weekKey, {
+                    key: weekKey,
+                    weekNumber,
+                    label: `Week ${weekNumber}`,
+                    days: [],
+                });
+            }
+
+            grouped.get(weekKey).days.push({
+                ...day,
+                dayInWeek,
+                shortLabel: `Day ${dayInWeek}`,
+            });
+        });
+
+        return Array.from(grouped.values()).map((week) => ({
+            ...week,
+            days: week.days.sort((a, b) => a.dayInWeek - b.dayInWeek),
+        }));
+    }, [mealPlan]);
+
+    const firstWeekKey = weekGroups[0]?.key || "";
+    const [activeWeek, setActiveWeek] = useState(firstWeekKey);
+    const [expandedDays, setExpandedDays] = useState(() => {
+        const firstDay = weekGroups[0]?.days?.[0]?.day;
+        return firstDay ? { [firstDay]: true } : {};
+    });
+
+    const selectedWeek = weekGroups.find((week) => week.key === activeWeek) || weekGroups[0];
+
+    const toggleDay = (dayNumber) => {
+        setExpandedDays((current) => ({
+            ...current,
+            [dayNumber]: !current[dayNumber],
+        }));
+    };
+
+    if (!weekGroups.length) return null;
 
     return (
-        <div className="meal-plan-schedule">
-            <div className="meal-plan-head">
-                <span className="meal-plan-head-day">Day</span>
-                <span className="meal-plan-head-slot">Meal</span>
-                <span className="meal-plan-head-item">Planned Item</span>
+        <div className="meal-plan-schedule meal-plan-schedule-v2">
+            <div className="meal-plan-week-tabs" role="tablist" aria-label="Meal plan weeks">
+                {weekGroups.map((week) => (
+                    <button
+                        key={week.key}
+                        type="button"
+                        role="tab"
+                        aria-selected={activeWeek === week.key}
+                        className={`meal-plan-week-tab${activeWeek === week.key ? " is-active" : ""}`}
+                        onClick={() => setActiveWeek(week.key)}
+                    >
+                        {week.label}
+                    </button>
+                ))}
             </div>
 
             <div className="meal-plan-body">
-                {mealPlan.days.map((day) => {
+                {selectedWeek?.days.map((day, index) => {
                     const entries = Object.entries(day.meals || {});
+                    const isExpanded = Boolean(expandedDays[day.day] ?? index === 0);
+
                     return (
-                        <div key={day.day} className="meal-plan-day-group">
-                            {entries.map(([slot, items], slotIndex) => (
-                                <div
-                                    key={`${day.day}-${slot}`}
-                                    className="meal-plan-row"
-                                >
-                                    <div className="meal-plan-day-cell">
-                                        {slotIndex === 0 ? day.label || `Day ${day.day}` : ""}
-                                    </div>
-                                    <div className="meal-plan-slot-cell">
-                                        {slot.replace(/(^\w|\s\w)/g, (match) => match.toUpperCase())}
-                                    </div>
-                                    <div className="meal-plan-item-cell">
-                                        {(items || []).map((item, itemIndex) => (
-                                            <ProductDetails
-                                                key={`${day.day}-${slot}-${getPlannedItemName(item) || "item"}-${itemIndex}`}
-                                                itemName={getPlannedItemName(item)}
-                                                product={resolvePlannedProduct(products, item)}
-                                                currencySymbol={currencySymbol}
-                                            />
-                                        ))}
-                                    </div>
+                        <div key={day.day} className="meal-plan-day-group meal-plan-day-card">
+                            <button
+                                type="button"
+                                className="meal-plan-day-toggle meal-plan-day-toggle-v2"
+                                onClick={() => toggleDay(day.day)}
+                                aria-expanded={isExpanded}
+                            >
+                                <div className="meal-plan-day-toggle-copy">
+                                    <span className="meal-plan-day-toggle-title">
+                                        {day.shortLabel}
+                                    </span>
                                 </div>
-                            ))}
+                                <span className={`meal-plan-day-toggle-icon${isExpanded ? " is-open" : ""}`}>
+                                    ▾
+                                </span>
+                            </button>
+
+                            {isExpanded && (
+                                <div className="meal-plan-day-content">
+                                    {entries.map(([slot, items]) => (
+                                        <div key={`${day.day}-${slot}`} className="meal-plan-slot-block">
+                                            <div className="meal-plan-slot-badge">
+                                                {formatSlotLabel(slot)}
+                                            </div>
+                                            <div className="meal-plan-slot-items">
+                                                {(items || []).map((item, itemIndex) => (
+                                                    <ProductLine
+                                                        key={`${day.day}-${slot}-${getPlannedItemName(item) || "item"}-${itemIndex}`}
+                                                        itemName={getPlannedItemName(item)}
+                                                        product={resolvePlannedProduct(products, item)}
+                                                        currencySymbol={currencySymbol}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     );
                 })}

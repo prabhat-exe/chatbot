@@ -11,6 +11,7 @@ export async function POST(req) {
     body: JSON.stringify(body),
   });
 
+  // console.log("AI API status:", res.status);
   if (!res.ok) {
     const text = await res.text();
     return Response.json(
@@ -21,6 +22,7 @@ export async function POST(req) {
 
   const apiData = await res.json();
 
+  // console.log("AI API response:", apiData);
   return Response.json({
     success: apiData.success,
     intent: apiData.intent,
