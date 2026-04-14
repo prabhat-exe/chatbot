@@ -9,6 +9,70 @@
   flex-direction: column;
 }
 
+.bot-toast {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  width: min(360px, calc(100vw - 32px));
+  z-index: 3000;
+  display: grid;
+  gap: 4px;
+  padding: 12px 42px 12px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #fecaca;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+  animation: botToastIn 0.18s ease-out;
+}
+
+.bot-toast-error {
+  border-left: 4px solid #dc2626;
+}
+
+.bot-toast-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.bot-toast-message {
+  font-size: 13px;
+  line-height: 1.35;
+  color: #374151;
+}
+
+.bot-toast-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.bot-toast-close:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+@keyframes botToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Header */
 .food-bot-header {
   display: flex;

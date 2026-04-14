@@ -105,7 +105,9 @@ export default function FoodBot() {
   const [showDeliveryAddressModal, setShowDeliveryAddressModal] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState(DEFAULT_DELIVERY_ADDRESS);
   const [pendingCheckoutRequest, setPendingCheckoutRequest] = useState(null);
+  const [toast, setToast] = useState(null);
   const hasShownWelcomePromptRef = useRef(false);
+  const toastTimeoutRef = useRef(null);
   const currencySymbol = (selectedRestaurant?.country_currency || "₹").trim() || "₹";
   const headerSubtitle = showCart
     ? "Review your order"
@@ -139,6 +141,24 @@ export default function FoodBot() {
     };
     bootstrapRestaurants();
   }, []);
+
+  useEffect(() => () => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+  }, []);
+
+  const showToast = (message, type = "error") => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+
+    setToast({ message, type });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(null);
+      toastTimeoutRef.current = null;
+    }, 4000);
+  };
 
   const refreshRestaurantSelection = async (restaurantId = selectedRestaurant?.id) => {
     if (!restaurantId) return selectedRestaurant;
@@ -438,19 +458,51 @@ export default function FoodBot() {
   };
 
   const getTaxDetailsForMealPlanProduct = (product) => {
+    const unitPrice = getMealPlanProductUnitPrice(product);
+
     if (!product?.map_tax_class) {
       return {
         taxes: [],
         total_tax: 0,
-        base_price: Number(product?.price_from ?? product?.price ?? 0),
-        final_price: Number(product?.price_from ?? product?.price ?? 0),
+        base_price: unitPrice,
+        final_price: unitPrice,
       };
     }
 
     return calculateTaxFromSubCategory(
-      Number(product.price_from ?? product.price ?? 0),
+      unitPrice,
       product.map_tax_class
     );
+  };
+
+  const getMealPlanDefaultVariation = (product) => {
+    const variations = Array.isArray(product?.variations) ? product.variations : [];
+    if (!variations.length) return null;
+
+    const targetPrice = Number(product?.price_from ?? product?.price ?? 0);
+    const matchedVariation =
+      variations.find((variation) => Number(variation?.variation_price) === targetPrice) ||
+      variations.reduce((lowest, variation) => {
+        if (!lowest) return variation;
+        return Number(variation?.variation_price ?? Infinity) < Number(lowest?.variation_price ?? Infinity)
+          ? variation
+          : lowest;
+      }, null);
+
+    if (!matchedVariation) return null;
+
+    return {
+      variation_id: Number(matchedVariation.variation_id),
+      variation_name: matchedVariation.variation_name || "Variation",
+      variation_price: Number(matchedVariation.variation_price || 0),
+    };
+  };
+
+  const getMealPlanProductUnitPrice = (product) => {
+    const selectedVariation = getMealPlanDefaultVariation(product);
+    return selectedVariation
+      ? selectedVariation.variation_price
+      : Number(product?.price_from ?? product?.price ?? 0);
   };
 
   const buildMealPlanOrderItems = (mealPlan, products = []) => {
@@ -463,8 +515,12 @@ export default function FoodBot() {
           if (!product?.product_id) return;
 
           const itemId = Number(product.product_id);
-          const key = `${itemId}|no-variation|no-addons`;
-          const unitPrice = Number(product.price_from ?? product.price ?? 0);
+          const selectedVariation = getMealPlanDefaultVariation(product);
+          const variationKey = selectedVariation?.variation_id || "no-variation";
+          const key = `${itemId}|${variationKey}|no-addons`;
+          const unitPrice = selectedVariation
+            ? selectedVariation.variation_price
+            : Number(product.price_from ?? product.price ?? 0);
 
           if (!itemMap.has(key)) {
             itemMap.set(key, {
@@ -473,7 +529,7 @@ export default function FoodBot() {
               name: product.product_name,
               image: product.image_url,
               category_id: product.category_id,
-              selected_variation: null,
+              selected_variation: selectedVariation,
               addons: [],
               unit_price: unitPrice,
               quantity: 0,
@@ -620,6 +676,27 @@ export default function FoodBot() {
       mealsPerDay: count,
     }));
 
+  const getOrderPlacementErrorMessage = (error) => {
+    const message = String(error?.message || "");
+    const jsonStart = message.indexOf("{");
+
+    if (jsonStart >= 0) {
+      try {
+        const parsed = JSON.parse(message.slice(jsonStart));
+        const errors = parsed?.details?.errors || parsed?.errors;
+        if (Array.isArray(errors) && errors.length > 0) {
+          return errors.join(" ");
+        }
+      } catch {
+        // Fall through to the generic messages below.
+      }
+    }
+
+    return message.includes("422")
+      ? "Order placement failed. Please check the selected items and delivery details."
+      : "Order placement failed due to a server/network issue. Please retry.";
+  };
+
   const promptForMealPlanNotes = () => {
     setMealPlanConfig((prev) => ({ ...prev, awaitingNotes: true }));
     addAssistantMessage({
@@ -726,17 +803,17 @@ export default function FoodBot() {
   const executeCheckout = async (checkoutItems = cart, options = {}) => {
     try {
       if (!selectedRestaurant?.id) {
-        addAssistantMessage({ text: "Please select a restaurant before checkout." });
+        showToast("Please select a restaurant before checkout.");
         return;
       }
       if (!checkoutItems.length) {
-        addAssistantMessage({ text: "Your cart is empty. Add an item first." });
+        showToast("Your cart is empty. Add an item first.");
         return;
       }
 
       const flattenedCheckout = flattenCartItemsForCheckout(checkoutItems);
       if (flattenedCheckout.error) {
-        addAssistantMessage({ text: flattenedCheckout.error });
+        showToast(flattenedCheckout.error);
         setShowCart(true);
         return;
       }
@@ -750,7 +827,7 @@ export default function FoodBot() {
         .join(" | ");
 
       if (!isLoggedIn) {
-        addAssistantMessage({ text: "Please login to place your order." });
+        showToast("Please login to place your order.");
         setShowCart(false);
         setAuthStep("phone");
         setShowAuthInline(true);
@@ -763,7 +840,7 @@ export default function FoodBot() {
       );
 
       if (!userId) {
-        addAssistantMessage({ text: "Please login again to continue checkout." });
+        showToast("Please login again to continue checkout.");
         setShowCart(false);
         setAuthStep("phone");
         setShowAuthInline(true);
@@ -781,9 +858,7 @@ export default function FoodBot() {
         !Number.isFinite(deliveryRadiusKm) ||
         deliveryRadiusKm <= 0
       ) {
-        addAssistantMessage({
-          text: "This restaurant has not configured its delivery area yet, so delivery checkout is unavailable right now.",
-        });
+        showToast("This restaurant has not configured its delivery area yet, so delivery checkout is unavailable right now.");
         return;
       }
 
@@ -860,17 +935,11 @@ export default function FoodBot() {
           ),
         });
       } else {
-        addAssistantMessage({
-          text: "Order could not be placed. Please try again.",
-        });
+        showToast("Order could not be placed. Please try again.");
       }
     } catch (err) {
       console.error(err);
-      addAssistantMessage({
-        text: err?.message?.includes("422")
-          ? "Order placement failed. Please check the delivery address and make sure the pin is inside the allowed radius."
-          : "Order placement failed due to a server/network issue. Please retry.",
-      });
+      showToast(getOrderPlacementErrorMessage(err));
     }
   };
 
@@ -1490,6 +1559,29 @@ export default function FoodBot() {
 
   return (
     <div className="food-bot-container">
+      {toast && (
+        <div className={`bot-toast bot-toast-${toast.type}`} role="alert">
+          <span className="bot-toast-title">
+            {toast.type === "error" ? "Action needed" : "Notice"}
+          </span>
+          <span className="bot-toast-message">{toast.message}</span>
+          <button
+            type="button"
+            className="bot-toast-close"
+            aria-label="Dismiss message"
+            onClick={() => {
+              if (toastTimeoutRef.current) {
+                clearTimeout(toastTimeoutRef.current);
+                toastTimeoutRef.current = null;
+              }
+              setToast(null);
+            }}
+          >
+            x
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <header className="food-bot-header">
         <div className="header-logo">
