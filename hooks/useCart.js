@@ -5,6 +5,7 @@ import { calculateTaxFromSubCategory } from "../utils/helpers";
 export function useCart() {
   const [cart, setCart] = useState([]);
   const [taxInfoMap, setTaxInfoMap] = useState({}); // Store tax info for categories
+  const isMealPlanPackage = (item) => item?.type === "meal_plan_package";
 
   // Function to sync cart item with backend
   const syncCartWithBackend = async (orderItem) => {
@@ -38,8 +39,6 @@ export function useCart() {
     // Calculate tax details if category tax info exists
     const categoryId = orderItem.category_id;
     const taxInfo = taxInfoMap[categoryId];
-    console.log("taxInfo",taxInfo,'-----',taxInfoMap,'-----',categoryId)
-    // return;
 
     let taxDetails = {
       taxes: [],
@@ -48,7 +47,7 @@ export function useCart() {
       final_price: orderItem.unit_price,
     };
 
-    if (taxInfo?.map_tax_class) {
+    if (!isMealPlanPackage(orderItem) && taxInfo?.map_tax_class) {
       taxDetails = calculateTaxFromSubCategory(orderItem.unit_price, taxInfo.map_tax_class);
     }
 
@@ -80,6 +79,12 @@ export function useCart() {
       );
 
       if (existingIndex !== -1) {
+        if (isMealPlanPackage(itemWithTax)) {
+          const updatedCart = [...prevCart];
+          updatedCart[existingIndex] = itemWithTax;
+          return updatedCart;
+        }
+
         // Merge quantities only if EXACT same item (including addons)
         const updatedCart = [...prevCart];
         updatedCart[existingIndex] = {
@@ -128,17 +133,15 @@ export function useCart() {
     setCart((prevCart) => {
       const updatedCart = prevCart.map((item) => {
         if (item.cart_key === cartKey) {
+          if (isMealPlanPackage(item)) {
+            return item;
+          }
+
           const updatedItem = {
             ...item,
             quantity: newQuantity,
             total_price: item.unit_price * newQuantity,
           };
-          console.log('Updated quantity:', {
-            name: item.name,
-            old_quantity: item.quantity,
-            new_quantity: newQuantity,
-            new_total: updatedItem.total_price
-          });
           return updatedItem;
         }
         return item;
@@ -147,12 +150,24 @@ export function useCart() {
     });
   };
 
+  const updateCartItem = (cartKey, updates) => {
+    setCart((prevCart) =>
+      prevCart.map((item) => {
+        if (item.cart_key !== cartKey) return item;
+        return {
+          ...item,
+          ...updates,
+        };
+      })
+    );
+  };
+
   const clearCart = () => {
     setCart([]);
   };
 
   const getTotalItems = () => {
-    return cart.length; // Count of unique items, not total quantity
+    return cart.length; // Count of cart rows
   };
 
   const getTotalPrice = () => {
@@ -196,6 +211,7 @@ export function useCart() {
     addToCart,
     removeFromCart,
     updateQuantity,
+    updateCartItem,
     clearCart,
     getTotalItems,
     getTotalPrice,

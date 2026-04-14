@@ -2,9 +2,13 @@
 export async function POST(request) {
   try {
     const orderItem = await request.json();
+    const isMealPlanPackage = orderItem?.type === "meal_plan_package";
 
     // Validate the order item structure
-    if (!orderItem.item_id || !orderItem.name || orderItem.quantity < 1) {
+    if (
+      (!isMealPlanPackage && (!orderItem.item_id || !orderItem.name || orderItem.quantity < 1)) ||
+      (isMealPlanPackage && (!orderItem.name || Number(orderItem.quantity) < 1))
+    ) {
       return Response.json(
         { error: 'Invalid order item data' },
         { status: 400 }

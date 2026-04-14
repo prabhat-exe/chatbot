@@ -29,15 +29,34 @@ const getTodayDateString = () => {
   return `${year}-${month}-${day}`;
 };
 
+const getCurrentTimeString = () => {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
+};
+
+const isPastTimeForToday = (selectedDate, selectedTime) => {
+  if (!selectedDate || !selectedTime) return false;
+  if (selectedDate !== getTodayDateString()) return false;
+  return selectedTime < getCurrentTimeString();
+};
+
 const normalizeNameKey = (value = "") => String(value).trim().toLowerCase();
 const DEFAULT_DELIVERY_ADDRESS = {
   address: "",
   lat: "",
   lng: "",
 };
+const MEAL_SLOT_LABELS = {
+  2: ["Lunch", "Dinner"],
+  3: ["Breakfast", "Lunch", "Dinner"],
+  4: ["Breakfast", "Lunch", "Evening Snack", "Dinner"],
+  5: ["Breakfast", "Mid-morning Snack", "Lunch", "Evening Snack", "Dinner"],
+};
 
 export default function FoodBot() {
-  const { cart, addToCart, removeFromCart, updateQuantity, clearCart, getTotalItems, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
+  const { cart, addToCart, removeFromCart, updateQuantity, updateCartItem, clearCart, getTotalItems, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
   const {
     messages,
     isLoading,
@@ -77,7 +96,9 @@ export default function FoodBot() {
   const [mealPlanConfig, setMealPlanConfig] = useState({
     planType: "",
     mealsPerDay: null,
+    notes: "",
     awaitingNotes: false,
+    hasGeneratedPlan: false,
   });
   const [scheduledDate, setScheduledDate] = useState(getTodayDateString());
   const [scheduledTime, setScheduledTime] = useState("");
@@ -195,6 +216,12 @@ export default function FoodBot() {
     localStorage.setItem(deliveryAddressStorageKey, JSON.stringify(deliveryAddress));
   }, [deliveryAddress, deliveryAddressStorageKey]);
 
+  useEffect(() => {
+    if (isPastTimeForToday(scheduledDate, scheduledTime)) {
+      setScheduledTime("");
+    }
+  }, [scheduledDate, scheduledTime]);
+
   const buildOrderItemFromSelection = (selection) => {
     const item = normalizeMenuItem(selection.item || {});
     const selectedVariation = selection.selectedVariation || null;
@@ -305,8 +332,84 @@ export default function FoodBot() {
   const buildPostAddActions = () => {
     return [
       { id: `open-cart-${Date.now()}`, label: "Open Cart", type: "open_cart" },
-      { id: `place-order-${Date.now()}`, label: "Place Order", type: "place_order" },
     ];
+  };
+
+  const isMealPlanPackage = (item) => item?.type === "meal_plan_package";
+
+  const getPlannedItemName = (plannedItem) => {
+    if (typeof plannedItem === "string") return plannedItem;
+    if (plannedItem && typeof plannedItem === "object") {
+      return plannedItem.product_name || plannedItem.name || plannedItem.title || "";
+    }
+    return "";
+  };
+
+  const buildMealPlanSignature = (mealPlan = {}, planType = "", mealsPerDay = "") => {
+    const source = JSON.stringify({
+      planType,
+      mealsPerDay,
+      days: (mealPlan?.days || []).map((day) => ({
+        day: day.day,
+        meals: Object.fromEntries(
+          Object.entries(day.meals || {}).map(([slot, items]) => [
+            slot,
+            (items || []).map((item) => getPlannedItemName(item)),
+          ])
+        ),
+      })),
+    });
+
+    let hash = 0;
+    for (let index = 0; index < source.length; index += 1) {
+      hash = ((hash << 5) - hash + source.charCodeAt(index)) | 0;
+    }
+
+    return Math.abs(hash).toString(36);
+  };
+
+  const getMealPlanDurationLabel = (planType, durationDays) => {
+    const matchedOption = mealPlanOptions?.plan_durations?.find((option) => option.key === planType);
+    if (matchedOption?.label) return matchedOption.label;
+    if (Number(durationDays) > 0) {
+      return `${durationDays} Day${Number(durationDays) === 1 ? "" : "s"}`;
+    }
+    return "Meal Plan";
+  };
+
+  const getMealSlotLabels = (mealsPerDay) => MEAL_SLOT_LABELS[Number(mealsPerDay)] || [];
+
+  const buildInitialMealSlotTimes = (mealsPerDay) =>
+    Object.fromEntries(getMealSlotLabels(mealsPerDay).map((slotLabel) => [slotLabel, ""]));
+
+  const formatMealTimeDisplay = (value = "") => {
+    const normalized = String(value || "").trim().toUpperCase();
+    if (!normalized) return "";
+
+    const match = normalized.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/);
+    if (!match) return normalized;
+
+    let hours = Number(match[1]);
+    const minutes = match[2];
+    let period = match[3];
+
+    if (!period) {
+      period = hours >= 12 ? "PM" : "AM";
+      if (hours === 0) {
+        hours = 12;
+      } else if (hours > 12) {
+        hours -= 12;
+      }
+    }
+
+    if (hours === 0) hours = 12;
+    return `${hours}:${minutes} ${period}`;
+  };
+
+  const buildMealTimeNotes = (slotTimes = {}) => {
+    const entries = Object.entries(slotTimes).filter(([, time]) => String(time || "").trim());
+    if (!entries.length) return "";
+    return `Preferred delivery times: ${entries.map(([slot, time]) => `${slot} at ${time}`).join(", ")}`;
   };
 
   const findMealPlanProduct = (products = [], itemName = "") => {
@@ -389,14 +492,93 @@ export default function FoodBot() {
     return Array.from(itemMap.values());
   };
 
+  const buildMealPlanPackage = (mealPlan, products = [], options = {}) => {
+    const flattenedItems = buildMealPlanOrderItems(mealPlan, products);
+    const totalPrice = Number(
+      flattenedItems.reduce((sum, item) => sum + Number(item.total_price || 0), 0).toFixed(2)
+    );
+    const totalTax = Number(getTotalTaxForItems(flattenedItems).toFixed(2));
+    const totalMeals = flattenedItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const durationLabel = getMealPlanDurationLabel(options.planType, mealPlan?.duration_days);
+    const mealsPerDay = Number(options.mealsPerDay || mealPlan?.meals_per_day || 0);
+    const cartKey = `meal-plan|${buildMealPlanSignature(mealPlan, options.planType, mealsPerDay)}`;
+
+    return {
+      type: "meal_plan_package",
+      cart_type: "meal_plan_package",
+      cart_key: cartKey,
+      name: `${durationLabel} Meal Plan`,
+      quantity: 1,
+      unit_price: totalPrice,
+      total_price: totalPrice,
+      start_date: options.startDate || "",
+      meal_plan: mealPlan,
+      meal_plan_products: products,
+      meal_plan_summary: {
+        plan_type: options.planType || "",
+        duration_label: durationLabel,
+        total_days: Number(mealPlan?.duration_days || (mealPlan?.days || []).length || 0),
+        meals_per_day: mealsPerDay,
+        total_meals: totalMeals,
+        slot_times: {
+          ...buildInitialMealSlotTimes(mealsPerDay),
+          ...(options.slotTimes || {}),
+        },
+      },
+      tax_details: {
+        taxes: [],
+        total_tax: totalTax,
+        base_price: totalPrice,
+        final_price: totalPrice,
+      },
+    };
+  };
+
   const getTotalTaxForItems = (items = []) =>
     items.reduce((total, item) => total + ((item.tax_details?.total_tax || 0) * Number(item.quantity || 0)), 0);
+
+  const flattenCartItemsForCheckout = (items = []) => {
+    const packageItems = items.filter((item) => isMealPlanPackage(item));
+    const missingStartDate = packageItems.find((item) => !String(item.start_date || "").trim());
+    if (missingStartDate) {
+      return {
+        error: "Please select a start date for your meal plan in the cart before checkout.",
+      };
+    }
+
+    const missingMealTime = packageItems.find((item) =>
+      Object.values(item.meal_plan_summary?.slot_times || {}).some((time) => !String(time || "").trim())
+    );
+    if (missingMealTime) {
+      return {
+        error: "Please choose delivery times for each meal in your meal plan package before checkout.",
+      };
+    }
+
+    const distinctStartDates = [...new Set(packageItems.map((item) => item.start_date).filter(Boolean))];
+    if (distinctStartDates.length > 1) {
+      return {
+        error: "Please use the same start date for all meal plan packages before checkout.",
+      };
+    }
+
+    return {
+      items: items.flatMap((item) =>
+        isMealPlanPackage(item)
+          ? buildMealPlanOrderItems(item.meal_plan, item.meal_plan_products || [])
+          : [item]
+      ),
+      selectedDateOverride: distinctStartDates[0] || "",
+    };
+  };
 
   const resetMealPlanConfig = () => {
     setMealPlanConfig({
       planType: "",
       mealsPerDay: null,
+      notes: "",
       awaitingNotes: false,
+      hasGeneratedPlan: false,
     });
   };
 
@@ -409,6 +591,10 @@ export default function FoodBot() {
     text: "Hi, I'm your AI food assistant!\n\nChoose how you'd like to order:",
     actions: getStartFlowActions(),
   });
+
+  const promptSelectRestaurantFirst = (message = "Please select a restaurant first.") => {
+    addAssistantMessage({ text: message });
+  };
 
   useEffect(() => {
     if (restaurantsLoading || restaurantsError || hasShownWelcomePromptRef.current) return;
@@ -458,9 +644,7 @@ export default function FoodBot() {
 
   const runMealPlanGeneration = async (notes = "") => {
     if (!selectedRestaurant?.id) {
-      addAssistantMessage({
-        text: "Please select a restaurant first to generate a meal plan.",
-      });
+      promptSelectRestaurantFirst("Please select a restaurant first to generate a meal plan.");
       return;
     }
 
@@ -471,8 +655,21 @@ export default function FoodBot() {
       return;
     }
 
-    setMealPlanConfig((prev) => ({ ...prev, awaitingNotes: false }));
-    setLoadingMessage("Creating your meal plan now. This may take a few moments.");
+    const nextNotes = [mealPlanConfig.notes, notes]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .join(". ");
+
+    setMealPlanConfig((prev) => ({
+      ...prev,
+      notes: nextNotes,
+      awaitingNotes: false,
+    }));
+    setLoadingMessage(
+      mealPlanConfig.hasGeneratedPlan
+        ? "Updating your full meal plan with your latest preference. This may take a few moments."
+        : "Creating your meal plan now. This may take a few moments."
+    );
     setIsLoading(true);
 
     try {
@@ -480,7 +677,7 @@ export default function FoodBot() {
         restaurant_id: selectedRestaurant.id,
         plan_type: mealPlanConfig.planType,
         meals_per_day: mealPlanConfig.mealsPerDay,
-        notes,
+        notes: nextNotes,
       });
 
       if (!result?.success) {
@@ -490,6 +687,13 @@ export default function FoodBot() {
         });
         return;
       }
+
+      setMealPlanConfig((prev) => ({
+        ...prev,
+        notes: nextNotes,
+        awaitingNotes: false,
+        hasGeneratedPlan: true,
+      }));
 
       addAssistantMessage({
         text: result.reply || "Your meal plan is ready.",
@@ -502,13 +706,8 @@ export default function FoodBot() {
             type: "meal_plan_add_all_to_cart",
             mealPlan: result.meal_plan || undefined,
             products: result.data?.products || [],
-          },
-          {
-            id: `meal-plan-place-all-${Date.now()}`,
-            label: "Place Order All At Once",
-            type: "meal_plan_place_all_at_once",
-            mealPlan: result.meal_plan || undefined,
-            products: result.data?.products || [],
+            planType: mealPlanConfig.planType,
+            mealsPerDay: mealPlanConfig.mealsPerDay,
           },
         ],
       });
@@ -534,6 +733,21 @@ export default function FoodBot() {
         addAssistantMessage({ text: "Your cart is empty. Add an item first." });
         return;
       }
+
+      const flattenedCheckout = flattenCartItemsForCheckout(checkoutItems);
+      if (flattenedCheckout.error) {
+        addAssistantMessage({ text: flattenedCheckout.error });
+        setShowCart(true);
+        return;
+      }
+
+      const normalizedCheckoutItems = flattenedCheckout.items || checkoutItems;
+      const effectiveSelectedDate = flattenedCheckout.selectedDateOverride || scheduledDate || "";
+      const mealPlanOrderComment = checkoutItems
+        .filter((item) => isMealPlanPackage(item))
+        .map((item) => buildMealTimeNotes(item.meal_plan_summary?.slot_times || {}))
+        .filter(Boolean)
+        .join(" | ");
 
       if (!isLoggedIn) {
         addAssistantMessage({ text: "Please login to place your order." });
@@ -579,12 +793,13 @@ export default function FoodBot() {
         return;
       }
 
-      const totalQuantity = checkoutItems.reduce((sum, item) => sum + Number(item.quantity), 0);
+      const totalQuantity = normalizedCheckoutItems.reduce((sum, item) => sum + Number(item.quantity), 0);
       const totalPrice = Number(
-        checkoutItems.reduce((sum, item) => sum + Number(item.total_price), 0).toFixed(2)
+        normalizedCheckoutItems.reduce((sum, item) => sum + Number(item.total_price), 0).toFixed(2)
       );
       const today = getTodayDateString();
-      const isFutureOrder = Boolean(scheduledDate && scheduledDate > today);
+
+      const isFutureOrder = Boolean(effectiveSelectedDate && effectiveSelectedDate > today);
 
       const payload = {
         user_id: userId,
@@ -594,16 +809,16 @@ export default function FoodBot() {
         order_type: 1,
         total_quantity: totalQuantity,
         total_price: totalPrice,
-        total_tax: Number(getTotalTaxForItems(checkoutItems).toFixed(2)),
-        order_comments: "",
+        total_tax: Number(getTotalTaxForItems(normalizedCheckoutItems).toFixed(2)),
+        order_comments: mealPlanOrderComment,
         payment_method: "upi",
-        selectedDate: scheduledDate || "",
+        selectedDate: effectiveSelectedDate,
         time: scheduledTime || "",
         pre_order_status: isFutureOrder ? 1 : 0,
         delivery_address: deliveryAddress.address,
         address_lat: Number(deliveryAddress.lat),
         address_long: Number(deliveryAddress.lng),
-        items: checkoutItems.map((item) => ({
+        items: normalizedCheckoutItems.map((item) => ({
           item_id: Number(item.item_id),
           item_name: item.name,
           price: Number(item.unit_price),
@@ -667,19 +882,15 @@ export default function FoodBot() {
       action.type !== "start_meal_plan_order" &&
       !selectedRestaurant?.id
     ) {
-      addAssistantMessage({
-        text: "Please select a restaurant first, then continue.",
-        actions: getStartFlowActions(),
-      });
+      promptSelectRestaurantFirst("Please select a restaurant first, then continue.");
       return;
     }
 
     if (action.type === "start_same_day_order") {
       if (!selectedRestaurant?.id) {
-        addAssistantMessage({
-          text: "Please select a restaurant first, then you can continue with same day ordering.",
-          actions: getStartFlowActions(),
-        });
+        promptSelectRestaurantFirst(
+          "Please select a restaurant first, then you can continue with same day ordering."
+        );
         return;
       }
 
@@ -693,15 +904,12 @@ export default function FoodBot() {
     }
 
     if (action.type === "start_meal_plan_order") {
-      addUserMessage("Meal Preparation & Order");
       if (!selectedRestaurant?.id) {
-        addAssistantMessage({
-          text: "Please select a restaurant first to generate a meal plan.",
-          actions: getStartFlowActions(),
-        });
+        promptSelectRestaurantFirst("Please select a restaurant first to generate a meal plan.");
         return;
       }
 
+      addUserMessage("Meal Preparation & Order");
       setOrderFlow("meal_plan");
       resetMealPlanConfig();
       try {
@@ -720,6 +928,7 @@ export default function FoodBot() {
       setMealPlanConfig((prev) => ({
         ...prev,
         planType: action.planType,
+        hasGeneratedPlan: false,
         awaitingNotes: false,
       }));
       addUserMessage(action.label);
@@ -734,6 +943,7 @@ export default function FoodBot() {
       setMealPlanConfig((prev) => ({
         ...prev,
         mealsPerDay: action.mealsPerDay,
+        hasGeneratedPlan: false,
         awaitingNotes: false,
       }));
       addUserMessage(action.label);
@@ -748,34 +958,32 @@ export default function FoodBot() {
     }
 
     if (action.type === "meal_plan_add_all_to_cart") {
-      const mealPlanItems = buildMealPlanOrderItems(action.mealPlan, action.products);
-      if (!mealPlanItems.length) {
-        addAssistantMessage({ text: "I couldn't prepare the full meal plan items for cart." });
+      const mealPlanPackage = buildMealPlanPackage(action.mealPlan, action.products, {
+        planType: action.planType,
+        mealsPerDay: action.mealsPerDay,
+      });
+      if (!mealPlanPackage.total_price) {
+        addAssistantMessage({ text: "I couldn't prepare the full meal plan package for cart." });
         return;
       }
 
-      for (const item of mealPlanItems) {
-        await addToCart(item);
-      }
-
-      addAssistantMessage({
-        text: "The whole meal plan has been added to your cart. You can review it and place one combined order.",
-        actions: buildPostAddActions(),
-      });
+      await handleAddToCart(mealPlanPackage);
+      setShowCart(true);
       return;
     }
 
     if (action.type === "meal_plan_place_all_at_once") {
-      const mealPlanItems = buildMealPlanOrderItems(action.mealPlan, action.products);
-      if (!mealPlanItems.length) {
-        addAssistantMessage({ text: "I couldn't prepare the full meal plan for checkout." });
+      const mealPlanPackage = buildMealPlanPackage(action.mealPlan, action.products, {
+        planType: action.planType,
+        mealsPerDay: action.mealsPerDay,
+      });
+      if (!mealPlanPackage.total_price) {
+        addAssistantMessage({ text: "I couldn't prepare the full meal plan package for checkout." });
         return;
       }
 
-      await executeCheckout(mealPlanItems, {
-        keepCartOnSuccess: true,
-        successMessage: "Your full meal plan order has been placed successfully in one go.",
-      });
+      await handleAddToCart(mealPlanPackage);
+      setShowCart(true);
       return;
     }
 
@@ -791,7 +999,7 @@ export default function FoodBot() {
     }
 
     if (action.type === "place_order") {
-      await executeCheckout();
+      setShowCart(true);
       return;
     }
 
@@ -949,11 +1157,15 @@ export default function FoodBot() {
   };
 
   const handleSendMessage = async (text) => {
-    if (!selectedRestaurant?.id) return;
     const userText = text.trim();
     const lower = userText.toLowerCase();
 
     if (!userText) return;
+
+    if (!selectedRestaurant?.id) {
+      promptSelectRestaurantFirst("Please select a restaurant first.");
+      return;
+    }
 
     if (mealPlanConfig.awaitingNotes) {
       addUserMessage(userText);
@@ -961,9 +1173,21 @@ export default function FoodBot() {
       return;
     }
 
+
     if (lower.includes("place order")) {
       addUserMessage(userText);
-      await executeCheckout();
+      setShowCart(true);
+      return;
+    }
+
+    if (
+      orderFlow === "meal_plan" &&
+      mealPlanConfig.planType &&
+      mealPlanConfig.mealsPerDay &&
+      mealPlanConfig.hasGeneratedPlan
+    ) {
+      addUserMessage(userText);
+      await runMealPlanGeneration(userText);
       return;
     }
 
@@ -1103,6 +1327,29 @@ export default function FoodBot() {
       setTimeout(() => setFloatingItem(null), 800);
     }
 
+  };
+
+  const handleMealPlanSlotTimeChange = (cartKey, slotLabel, timeValue) => {
+    const mealPlanPackage = cart.find((item) => item.cart_key === cartKey);
+    if (!mealPlanPackage) return;
+
+    updateCartItem(cartKey, {
+      meal_plan_summary: {
+        ...(mealPlanPackage.meal_plan_summary || {}),
+        slot_times: {
+          ...(mealPlanPackage.meal_plan_summary?.slot_times || {}),
+          [slotLabel]: formatMealTimeDisplay(timeValue),
+        },
+      },
+    });
+  };
+
+  const handleScheduledTimeChange = (nextTime) => {
+    if (isPastTimeForToday(scheduledDate, nextTime)) {
+      setScheduledTime("");
+      return;
+    }
+    setScheduledTime(nextTime);
   };
 
   const handleItemClick = (item) => {
@@ -1342,6 +1589,8 @@ export default function FoodBot() {
                 currencySymbol={currencySymbol}
                 onRemoveItem={removeFromCart}
                 onUpdateQuantity={updateQuantity}
+                onMealPlanStartDateChange={(cartKey, startDate) => updateCartItem(cartKey, { start_date: startDate })}
+                onMealPlanSlotTimeChange={handleMealPlanSlotTimeChange}
                 onClose={() => {
                   setShowCart(false);
                   setTimeout(() => {
@@ -1355,8 +1604,9 @@ export default function FoodBot() {
                 scheduledDate={scheduledDate}
                 scheduledTime={scheduledTime}
                 onScheduledDateChange={setScheduledDate}
-                onScheduledTimeChange={setScheduledTime}
+                onScheduledTimeChange={handleScheduledTimeChange}
                 minDate={getTodayDateString()}
+                minTime={scheduledDate === getTodayDateString() ? getCurrentTimeString() : ""}
                 onRequireLogin={() => {
                   setShowCart(false);
                   setAuthStep("phone");
