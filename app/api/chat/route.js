@@ -1,3 +1,33 @@
+const EMPTY_MENU_REPLY = "No items are available in this menu yet.";
+
+function countMenuItems(categoryData = []) {
+  return categoryData.reduce((total, category) => {
+    const subCategories = category?.sub_category_data || [];
+    return total + subCategories.reduce((subTotal, subCategory) => {
+      return subTotal + (subCategory?.item_data?.length || 0);
+    }, 0);
+  }, 0);
+}
+
+async function getMenuItemCount(restaurantId) {
+  const laravelApiBase = process.env.LARAVEL_API_BASE_URL || "http://127.0.0.1:8001/api";
+  try {
+    const res = await fetch(`${laravelApiBase}/restaurants/${restaurantId}/menu`, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+
+    if (!res.ok) return null;
+
+    const payload = await res.json();
+    return countMenuItems(payload?.category_data || []);
+  } catch (error) {
+    console.error("Menu preflight failed:", error);
+    return null;
+  }
+}
+
 export async function POST(req) {
   const body = await req.json();
   const sessionId = body.session_id || 'anonymous';
@@ -11,6 +41,16 @@ export async function POST(req) {
   }
 
   const aiBaseUrl = process.env.AI_SERVICE_URL || "http://0.0.0.0:8000";
+  const menuItemCount = await getMenuItemCount(restaurantId);
+
+  if (menuItemCount === 0) {
+    return Response.json({
+      intent: "MENU",
+      reply: EMPTY_MENU_REPLY,
+      category_data: [],
+      categories: []
+    });
+  }
 
   const res = await fetch(`${aiBaseUrl}/chat`, {
     method: "POST",
