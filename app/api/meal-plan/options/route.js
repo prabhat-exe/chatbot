@@ -1,7 +1,10 @@
-export async function GET() {
+export async function GET(req) {
   const aiBaseUrl = process.env.AI_SERVICE_URL || "http://0.0.0.0:8000";
+  const { searchParams } = new URL(req.url);
+  const restaurantId = searchParams.get("restaurant_id");
+  const query = restaurantId ? `?restaurant_id=${encodeURIComponent(restaurantId)}` : "";
 
-  const res = await fetch(`${aiBaseUrl}/meal-plan/options`, {
+  const res = await fetch(`${aiBaseUrl}/meal-plan/options${query}`, {
     method: "GET",
     headers: {
       accept: "application/json",

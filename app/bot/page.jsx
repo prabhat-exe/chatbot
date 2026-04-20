@@ -55,6 +55,13 @@ const MEAL_SLOT_LABELS = {
   5: ["Breakfast", "Mid-morning Snack", "Lunch", "Evening Snack", "Dinner"],
 };
 
+const createEmptyMealPlanConfig = () => ({
+  answers: {},
+  currentQuestionKey: "",
+  awaitingTextQuestionKey: "",
+  hasGeneratedPlan: false,
+});
+
 export default function FoodBot() {
   const { cart, addToCart, removeFromCart, updateQuantity, updateCartItem, clearCart, getTotalItems, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
   const {
@@ -93,13 +100,7 @@ export default function FoodBot() {
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
   const [orderFlow, setOrderFlow] = useState(null);
   const [mealPlanOptions, setMealPlanOptions] = useState(null);
-  const [mealPlanConfig, setMealPlanConfig] = useState({
-    planType: "",
-    mealsPerDay: null,
-    notes: "",
-    awaitingNotes: false,
-    hasGeneratedPlan: false,
-  });
+  const [mealPlanConfig, setMealPlanConfig] = useState(createEmptyMealPlanConfig);
   const [scheduledDate, setScheduledDate] = useState(getTodayDateString());
   const [scheduledTime, setScheduledTime] = useState("");
   const [showDeliveryAddressModal, setShowDeliveryAddressModal] = useState(false);
@@ -397,10 +398,33 @@ export default function FoodBot() {
     return "Meal Plan";
   };
 
-  const getMealSlotLabels = (mealsPerDay) => MEAL_SLOT_LABELS[Number(mealsPerDay)] || [];
+  const getMealSlotLabels = (mealsPerDay, mealSlotChoice = "", mealPlan = null) => {
+    if (Array.isArray(mealPlan?.meal_slots) && mealPlan.meal_slots.length > 0) {
+      return mealPlan.meal_slots;
+    }
 
-  const buildInitialMealSlotTimes = (mealsPerDay) =>
-    Object.fromEntries(getMealSlotLabels(mealsPerDay).map((slotLabel) => [slotLabel, ""]));
+    const optionsSlotMap =
+      mealPlanOptions?.meal_slot_options?.[String(mealsPerDay)] ||
+      mealPlanOptions?.meal_slot_options?.[Number(mealsPerDay)] ||
+      {};
+    if (mealSlotChoice && Array.isArray(optionsSlotMap?.[mealSlotChoice])) {
+      return optionsSlotMap[mealSlotChoice];
+    }
+
+    const optionLabels =
+      mealPlanOptions?.meal_slot_labels?.[String(mealsPerDay)] ||
+      mealPlanOptions?.meal_slot_labels?.[Number(mealsPerDay)];
+    if (Array.isArray(optionLabels) && optionLabels.length > 0) {
+      return optionLabels;
+    }
+
+    return MEAL_SLOT_LABELS[Number(mealsPerDay)] || [];
+  };
+
+  const buildInitialMealSlotTimes = (mealsPerDay, mealSlotChoice = "", mealPlan = null) =>
+    Object.fromEntries(
+      getMealSlotLabels(mealsPerDay, mealSlotChoice, mealPlan).map((slotLabel) => [slotLabel, ""])
+    );
 
   const formatMealTimeDisplay = (value = "") => {
     const normalized = String(value || "").trim().toUpperCase();
@@ -576,8 +600,13 @@ export default function FoodBot() {
         total_days: Number(mealPlan?.duration_days || (mealPlan?.days || []).length || 0),
         meals_per_day: mealsPerDay,
         total_meals: totalMeals,
+        meal_slot_choice: options.mealSlotChoice || mealPlan?.meal_slot_choice || "",
         slot_times: {
-          ...buildInitialMealSlotTimes(mealsPerDay),
+          ...buildInitialMealSlotTimes(
+            mealsPerDay,
+            options.mealSlotChoice || mealPlan?.meal_slot_choice || "",
+            mealPlan
+          ),
           ...(options.slotTimes || {}),
         },
       },
@@ -629,13 +658,7 @@ export default function FoodBot() {
   };
 
   const resetMealPlanConfig = () => {
-    setMealPlanConfig({
-      planType: "",
-      mealsPerDay: null,
-      notes: "",
-      awaitingNotes: false,
-      hasGeneratedPlan: false,
-    });
+    setMealPlanConfig(createEmptyMealPlanConfig());
   };
 
   const getStartFlowActions = () => ([
@@ -660,22 +683,6 @@ export default function FoodBot() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantsLoading, restaurantsError]);
 
-  const buildMealPlanDurationActions = (options) =>
-    (options?.plan_durations || []).map((duration) => ({
-      id: `meal-plan-duration-${duration.key}`,
-      label: duration.label,
-      type: "meal_plan_select_duration",
-      planType: duration.key,
-    }));
-
-  const buildMealsPerDayActions = (options) =>
-    (options?.meals_per_day_options || []).map((count) => ({
-      id: `meal-plan-meals-${count}`,
-      label: `${count} Meals / Day`,
-      type: "meal_plan_select_meals_per_day",
-      mealsPerDay: count,
-    }));
-
   const getOrderPlacementErrorMessage = (error) => {
     const message = String(error?.message || "");
     const jsonStart = message.indexOf("{");
@@ -697,51 +704,158 @@ export default function FoodBot() {
       : "Order placement failed due to a server/network issue. Please retry.";
   };
 
-  const promptForMealPlanNotes = () => {
-    setMealPlanConfig((prev) => ({ ...prev, awaitingNotes: true }));
-    addAssistantMessage({
-      text:
-        mealPlanOptions?.notes_placeholder ||
-        "Share your food preferences for the meal plan, or skip this step.",
-      actions: [
-        { id: `meal-plan-skip-notes-${Date.now()}`, label: "Skip Notes", type: "meal_plan_skip_notes" },
-      ],
-    });
+  const getMealPlanQuestions = (options = mealPlanOptions) =>
+    Array.isArray(options?.questions) ? options.questions : [];
+
+  const getMealPlanQuestionFlow = (options = mealPlanOptions) => {
+    if (Array.isArray(options?.question_flow) && options.question_flow.length > 0) {
+      return options.question_flow;
+    }
+    return getMealPlanQuestions(options).map((question) => question.key).filter(Boolean);
   };
 
-  const loadMealPlanOptions = async () => {
-    const options = await fetchMealPlanOptions();
-    setMealPlanOptions(options);
-    addAssistantMessage({
-      text: "Choose your meal plan duration:",
-      actions: buildMealPlanDurationActions(options),
-    });
-    return options;
+  const getMealPlanQuestionByKey = (key, options = mealPlanOptions) =>
+    getMealPlanQuestions(options).find((question) => question.key === key);
+
+  const resolveMealPlanQuestionOptions = (question, options = mealPlanOptions, answers = {}) => {
+    if (!question?.options_key) return [];
+
+    let rawOptions = options?.[question.options_key];
+    if (
+      question.depends_on &&
+      rawOptions &&
+      typeof rawOptions === "object" &&
+      !Array.isArray(rawOptions)
+    ) {
+      const dependencyValue = answers?.[question.depends_on];
+      rawOptions = rawOptions?.[String(dependencyValue)] || rawOptions?.[dependencyValue] || [];
+    }
+
+    if (Array.isArray(rawOptions)) return rawOptions;
+    if (rawOptions && typeof rawOptions === "object") {
+      return Object.entries(rawOptions).map(([key, value]) => ({ key, value }));
+    }
+    return [];
   };
 
-  const runMealPlanGeneration = async (notes = "") => {
+  const getMealPlanOptionLabel = (option, questionType = "") => {
+    if (questionType === "boolean") return option ? "Yes" : "No";
+    if (option && typeof option === "object") {
+      if (option.label) return option.label;
+      if (Array.isArray(option.value)) return option.value.join(", ");
+      if (option.name) return option.name;
+      if (option.key) return String(option.key);
+    }
+    return String(option);
+  };
+
+  const getMealPlanOptionValue = (option) => {
+    if (option && typeof option === "object" && Object.prototype.hasOwnProperty.call(option, "key")) {
+      return option.key;
+    }
+    return option;
+  };
+
+  const buildMealPlanQuestionActions = (question, options = mealPlanOptions, answers = {}) => {
+    if (!question) return [];
+
+    if (question.type === "text") {
+      return question.optional
+        ? [{
+            id: `meal-plan-skip-${question.key}`,
+            label: "Skip",
+            type: "meal_plan_skip_question",
+            questionKey: question.key,
+          }]
+        : [];
+    }
+
+    const rawOptions = resolveMealPlanQuestionOptions(question, options, answers);
+    const normalizedOptions = question.type === "boolean" && rawOptions.length === 0
+      ? [true, false]
+      : rawOptions;
+
+    if (question.type !== "boolean" && normalizedOptions.length === 0 && question.optional) {
+      return [];
+    }
+
+    const actions = normalizedOptions.map((option, index) => {
+      const value = getMealPlanOptionValue(option);
+      const label = getMealPlanOptionLabel(value, question.type === "boolean" ? "boolean" : "");
+      const displayLabel = question.type === "boolean" ? label : getMealPlanOptionLabel(option);
+      return {
+        id: `meal-plan-answer-${question.key}-${String(value)}-${index}`,
+        label: displayLabel,
+        type: "meal_plan_answer_question",
+        questionKey: question.key,
+        value,
+      };
+    });
+
+    if (question.optional) {
+      actions.push({
+        id: `meal-plan-skip-${question.key}`,
+        label: "Skip",
+        type: "meal_plan_skip_question",
+        questionKey: question.key,
+      });
+    }
+
+    return actions;
+  };
+
+  const getNextMealPlanQuestion = (options = mealPlanOptions, answers = {}, afterKey = "") => {
+    const flow = getMealPlanQuestionFlow(options);
+    const startIndex = afterKey ? flow.indexOf(afterKey) + 1 : 0;
+
+    for (let index = Math.max(startIndex, 0); index < flow.length; index += 1) {
+      const question = getMealPlanQuestionByKey(flow[index], options);
+      if (!question?.key) continue;
+
+      const alreadyAnswered = Object.prototype.hasOwnProperty.call(answers, question.key);
+      if (alreadyAnswered) continue;
+
+      const actions = buildMealPlanQuestionActions(question, options, answers);
+      if (question.type !== "text" && actions.length === 0 && question.optional) continue;
+
+      return question;
+    }
+
+    return null;
+  };
+
+  const stringOrNull = (value) => {
+    const trimmed = String(value || "").trim();
+    return trimmed ? trimmed : null;
+  };
+
+  const buildMealPlanGeneratePayload = (answers = {}) => ({
+    restaurant_id: selectedRestaurant.id,
+    plan_type: String(answers.plan_type || ""),
+    meals_per_day: Number(answers.meals_per_day || 0),
+    meal_slot_choice: stringOrNull(answers.meal_slot_choice),
+    diet: stringOrNull(answers.diet),
+    goal: stringOrNull(answers.goal),
+    avoid_text: String(answers.avoid_text || "").trim(),
+    cuisine: stringOrNull(answers.cuisine),
+    include_drinks: Boolean(answers.include_drinks),
+  });
+
+  const runMealPlanGeneration = async (answers = mealPlanConfig.answers) => {
     if (!selectedRestaurant?.id) {
       promptSelectRestaurantFirst("Please select a restaurant first to generate a meal plan.");
       return;
     }
 
-    if (!mealPlanConfig.planType || !mealPlanConfig.mealsPerDay) {
+    const payload = buildMealPlanGeneratePayload(answers);
+
+    if (!payload.plan_type || !payload.meals_per_day || !payload.meal_slot_choice) {
       addAssistantMessage({
         text: "Please complete the meal plan options first.",
       });
       return;
     }
 
-    const nextNotes = [mealPlanConfig.notes, notes]
-      .map((value) => String(value || "").trim())
-      .filter(Boolean)
-      .join(". ");
-
-    setMealPlanConfig((prev) => ({
-      ...prev,
-      notes: nextNotes,
-      awaitingNotes: false,
-    }));
     setLoadingMessage(
       mealPlanConfig.hasGeneratedPlan
         ? "Updating your full meal plan with your latest preference. This may take a few moments."
@@ -750,12 +864,7 @@ export default function FoodBot() {
     setIsLoading(true);
 
     try {
-      const result = await generateMealPlan({
-        restaurant_id: selectedRestaurant.id,
-        plan_type: mealPlanConfig.planType,
-        meals_per_day: mealPlanConfig.mealsPerDay,
-        notes: nextNotes,
-      });
+      const result = await generateMealPlan(payload);
 
       if (!result?.success) {
         addAssistantMessage({
@@ -767,8 +876,9 @@ export default function FoodBot() {
 
       setMealPlanConfig((prev) => ({
         ...prev,
-        notes: nextNotes,
-        awaitingNotes: false,
+        answers,
+        currentQuestionKey: "",
+        awaitingTextQuestionKey: "",
         hasGeneratedPlan: true,
       }));
 
@@ -783,8 +893,9 @@ export default function FoodBot() {
             type: "meal_plan_add_all_to_cart",
             mealPlan: result.meal_plan || undefined,
             products: result.data?.products || [],
-            planType: mealPlanConfig.planType,
-            mealsPerDay: mealPlanConfig.mealsPerDay,
+            planType: payload.plan_type,
+            mealsPerDay: payload.meals_per_day,
+            mealSlotChoice: payload.meal_slot_choice,
           },
         ],
       });
@@ -798,6 +909,41 @@ export default function FoodBot() {
       setIsLoading(false);
       setLoadingMessage("");
     }
+  };
+
+  const askNextMealPlanQuestion = async (options, answers = {}, afterKey = "") => {
+    const nextQuestion = getNextMealPlanQuestion(options, answers, afterKey);
+
+    if (!nextQuestion) {
+      setMealPlanConfig((prev) => ({
+        ...prev,
+        answers,
+        currentQuestionKey: "",
+        awaitingTextQuestionKey: "",
+      }));
+      await runMealPlanGeneration(answers);
+      return;
+    }
+
+    setMealPlanConfig((prev) => ({
+      ...prev,
+      answers,
+      currentQuestionKey: nextQuestion.key,
+      awaitingTextQuestionKey: nextQuestion.type === "text" ? nextQuestion.key : "",
+      hasGeneratedPlan: false,
+    }));
+
+    addAssistantMessage({
+      text: nextQuestion.prompt || "Please choose an option.",
+      actions: buildMealPlanQuestionActions(nextQuestion, options, answers),
+    });
+  };
+
+  const loadMealPlanOptions = async () => {
+    const options = await fetchMealPlanOptions(selectedRestaurant.id);
+    setMealPlanOptions(options);
+    await askNextMealPlanQuestion(options, {});
+    return options;
   };
 
   const executeCheckout = async (checkoutItems = cart, options = {}) => {
@@ -965,6 +1111,7 @@ export default function FoodBot() {
 
       setOrderFlow("same_day");
       resetMealPlanConfig();
+      setMealPlanOptions(null);
       addUserMessage("Same Day Order");
       addAssistantMessage({
         text: "Same day order selected. Ask for any dish or category to get started.",
@@ -993,36 +1140,35 @@ export default function FoodBot() {
       return;
     }
 
-    if (action.type === "meal_plan_select_duration") {
+    if (action.type === "meal_plan_answer_question") {
+      const question = getMealPlanQuestionByKey(action.questionKey);
+      if (!question) return;
+
+      const nextAnswers = {
+        ...(mealPlanConfig.answers || {}),
+        [action.questionKey]: action.value,
+      };
+
       setMealPlanConfig((prev) => ({
         ...prev,
-        planType: action.planType,
+        answers: nextAnswers,
         hasGeneratedPlan: false,
-        awaitingNotes: false,
       }));
       addUserMessage(action.label);
-      addAssistantMessage({
-        text: "How many meals would you like per day?",
-        actions: buildMealsPerDayActions(mealPlanOptions),
-      });
+      await askNextMealPlanQuestion(mealPlanOptions, nextAnswers, action.questionKey);
       return;
     }
 
-    if (action.type === "meal_plan_select_meals_per_day") {
+    if (action.type === "meal_plan_skip_question") {
+      const nextAnswers = { ...(mealPlanConfig.answers || {}) };
+
       setMealPlanConfig((prev) => ({
         ...prev,
-        mealsPerDay: action.mealsPerDay,
+        answers: nextAnswers,
         hasGeneratedPlan: false,
-        awaitingNotes: false,
       }));
-      addUserMessage(action.label);
-      promptForMealPlanNotes();
-      return;
-    }
-
-    if (action.type === "meal_plan_skip_notes") {
-      addUserMessage("Skip Notes");
-      await runMealPlanGeneration("");
+      addUserMessage(action.label || "Skip");
+      await askNextMealPlanQuestion(mealPlanOptions, nextAnswers, action.questionKey);
       return;
     }
 
@@ -1030,6 +1176,7 @@ export default function FoodBot() {
       const mealPlanPackage = buildMealPlanPackage(action.mealPlan, action.products, {
         planType: action.planType,
         mealsPerDay: action.mealsPerDay,
+        mealSlotChoice: action.mealSlotChoice,
       });
       if (!mealPlanPackage.total_price) {
         addAssistantMessage({ text: "I couldn't prepare the full meal plan package for cart." });
@@ -1045,6 +1192,7 @@ export default function FoodBot() {
       const mealPlanPackage = buildMealPlanPackage(action.mealPlan, action.products, {
         planType: action.planType,
         mealsPerDay: action.mealsPerDay,
+        mealSlotChoice: action.mealSlotChoice,
       });
       if (!mealPlanPackage.total_price) {
         addAssistantMessage({ text: "I couldn't prepare the full meal plan package for checkout." });
@@ -1236,9 +1384,21 @@ export default function FoodBot() {
       return;
     }
 
-    if (mealPlanConfig.awaitingNotes) {
+    if (mealPlanConfig.awaitingTextQuestionKey) {
+      const questionKey = mealPlanConfig.awaitingTextQuestionKey;
+      const nextAnswers = {
+        ...(mealPlanConfig.answers || {}),
+        [questionKey]: userText,
+      };
+
       addUserMessage(userText);
-      await runMealPlanGeneration(userText);
+      setMealPlanConfig((prev) => ({
+        ...prev,
+        answers: nextAnswers,
+        awaitingTextQuestionKey: "",
+        hasGeneratedPlan: false,
+      }));
+      await askNextMealPlanQuestion(mealPlanOptions, nextAnswers, questionKey);
       return;
     }
 
@@ -1251,12 +1411,17 @@ export default function FoodBot() {
 
     if (
       orderFlow === "meal_plan" &&
-      mealPlanConfig.planType &&
-      mealPlanConfig.mealsPerDay &&
       mealPlanConfig.hasGeneratedPlan
     ) {
+      const currentAvoidText = String(mealPlanConfig.answers?.avoid_text || "").trim();
+      const nextAnswers = {
+        ...(mealPlanConfig.answers || {}),
+        avoid_text: [currentAvoidText, userText].filter(Boolean).join(". "),
+      };
+
       addUserMessage(userText);
-      await runMealPlanGeneration(userText);
+      setMealPlanConfig((prev) => ({ ...prev, answers: nextAnswers }));
+      await runMealPlanGeneration(nextAnswers);
       return;
     }
 
@@ -1455,6 +1620,7 @@ export default function FoodBot() {
       clearCart();
       clearSession();
       resetMealPlanConfig();
+      setMealPlanOptions(null);
       setOrderFlow(null);
       setScheduledDate(getTodayDateString());
       setScheduledTime("");

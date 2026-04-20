@@ -50,8 +50,9 @@ export async function fetchRestaurants() {
   return res.json();
 }
 
-export async function fetchMealPlanOptions() {
-  const res = await fetch("/api/meal-plan/options", { method: "GET" });
+export async function fetchMealPlanOptions(restaurantId) {
+  const query = restaurantId ? `?restaurant_id=${encodeURIComponent(restaurantId)}` : "";
+  const res = await fetch(`/api/meal-plan/options${query}`, { method: "GET" });
   if (!res.ok) throw new Error(`Meal plan options API error: ${res.status}`);
   return res.json();
 }
