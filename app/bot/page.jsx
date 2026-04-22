@@ -1413,10 +1413,9 @@ export default function FoodBot() {
       orderFlow === "meal_plan" &&
       mealPlanConfig.hasGeneratedPlan
     ) {
-      const currentAvoidText = String(mealPlanConfig.answers?.avoid_text || "").trim();
       const nextAnswers = {
         ...(mealPlanConfig.answers || {}),
-        avoid_text: [currentAvoidText, userText].filter(Boolean).join(". "),
+        avoid_text: userText,
       };
 
       addUserMessage(userText);
