@@ -829,6 +829,18 @@ export default function FoodBot() {
     return trimmed ? trimmed : null;
   };
 
+  const buildMealPlanConversationHistory = () =>
+    messages
+      .filter((message) => {
+        if (message.role !== "user" && message.role !== "assistant") return false;
+        return Boolean(String(message.text || "").trim());
+      })
+      .slice(-10)
+      .map((message) => ({
+        role: message.role,
+        content: String(message.text || "").trim(),
+      }));
+
   const buildMealPlanGeneratePayload = (answers = {}) => ({
     restaurant_id: selectedRestaurant.id,
     plan_type: String(answers.plan_type || ""),
@@ -836,9 +848,12 @@ export default function FoodBot() {
     meal_slot_choice: stringOrNull(answers.meal_slot_choice),
     diet: stringOrNull(answers.diet),
     goal: stringOrNull(answers.goal),
-    avoid_text: String(answers.avoid_text || "").trim(),
+    avoid_food: String(answers.avoid_food || "").trim(),
+    include_food: String(answers.include_food || "").trim(),
+    notes: String(answers.notes || "").trim(),
     cuisine: stringOrNull(answers.cuisine),
     include_drinks: Boolean(answers.include_drinks),
+    conversation_history: buildMealPlanConversationHistory(),
   });
 
   const runMealPlanGeneration = async (answers = mealPlanConfig.answers) => {
@@ -1415,7 +1430,7 @@ export default function FoodBot() {
     ) {
       const nextAnswers = {
         ...(mealPlanConfig.answers || {}),
-        avoid_text: userText,
+        notes: userText,
       };
 
       addUserMessage(userText);
