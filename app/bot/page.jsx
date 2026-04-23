@@ -756,6 +756,19 @@ export default function FoodBot() {
     return option;
   };
 
+  const toMealPlanValueArray = (value) => {
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => String(entry || "").trim())
+        .filter(Boolean);
+    }
+
+    const trimmed = String(value || "").trim();
+    return trimmed ? [trimmed] : [];
+  };
+
+  const isSameMealPlanValue = (left, right) => String(left) === String(right);
+
   const buildMealPlanQuestionActions = (question, options = mealPlanOptions, answers = {}) => {
     if (!question) return [];
 
@@ -777,6 +790,28 @@ export default function FoodBot() {
 
     if (question.type !== "boolean" && normalizedOptions.length === 0 && question.optional) {
       return [];
+    }
+
+    if (question.type === "multi_choice") {
+      const actions = normalizedOptions.map((option, index) => {
+        const value = getMealPlanOptionValue(option);
+        return {
+          id: `meal-plan-toggle-${question.key}-${String(value)}-${index}`,
+          label: getMealPlanOptionLabel(option),
+          type: "meal_plan_toggle_multi_question",
+          questionKey: question.key,
+          value,
+        };
+      });
+
+      actions.push({
+        id: `meal-plan-continue-${question.key}`,
+        label: "Continue",
+        type: "meal_plan_continue_multi_question",
+        questionKey: question.key,
+      });
+
+      return actions;
     }
 
     const actions = normalizedOptions.map((option, index) => {
@@ -829,6 +864,18 @@ export default function FoodBot() {
     return trimmed ? trimmed : null;
   };
 
+  const getMealPlanSelectedOptionLabels = (question, selectedValues = [], options = mealPlanOptions, answers = {}) => {
+    const selectedList = toMealPlanValueArray(selectedValues);
+    if (!selectedList.length) return [];
+
+    return selectedList.map((selectedValue) => {
+      const matchedOption = resolveMealPlanQuestionOptions(question, options, answers)
+        .find((option) => isSameMealPlanValue(getMealPlanOptionValue(option), selectedValue));
+
+      return matchedOption ? getMealPlanOptionLabel(matchedOption) : String(selectedValue);
+    });
+  };
+
   const buildMealPlanConversationHistory = () =>
     messages
       .filter((message) => {
@@ -846,12 +893,12 @@ export default function FoodBot() {
     plan_type: String(answers.plan_type || ""),
     meals_per_day: Number(answers.meals_per_day || 0),
     meal_slot_choice: stringOrNull(answers.meal_slot_choice),
-    diet: stringOrNull(answers.diet),
-    goal: stringOrNull(answers.goal),
+    diet: toMealPlanValueArray(answers.diet),
+    goal: toMealPlanValueArray(answers.goal),
     avoid_food: String(answers.avoid_food || "").trim(),
     include_food: String(answers.include_food || "").trim(),
     notes: String(answers.notes || "").trim(),
-    cuisine: stringOrNull(answers.cuisine),
+    cuisine: toMealPlanValueArray(answers.cuisine),
     include_drinks: Boolean(answers.include_drinks),
     conversation_history: buildMealPlanConversationHistory(),
   });
@@ -1174,8 +1221,59 @@ export default function FoodBot() {
       return;
     }
 
+    if (action.type === "meal_plan_toggle_multi_question") {
+      const question = getMealPlanQuestionByKey(action.questionKey);
+      if (!question || question.type !== "multi_choice") return;
+
+      const currentValues = toMealPlanValueArray(mealPlanConfig.answers?.[action.questionKey]);
+      const nextValues = currentValues.some((value) => isSameMealPlanValue(value, action.value))
+        ? currentValues.filter((value) => !isSameMealPlanValue(value, action.value))
+        : [...currentValues, String(action.value || "").trim()].filter(Boolean);
+      const nextAnswers = {
+        ...(mealPlanConfig.answers || {}),
+        [action.questionKey]: nextValues,
+      };
+
+      setMealPlanConfig((prev) => ({
+        ...prev,
+        answers: nextAnswers,
+        hasGeneratedPlan: false,
+      }));
+      return;
+    }
+
+    if (action.type === "meal_plan_continue_multi_question") {
+      const question = getMealPlanQuestionByKey(action.questionKey);
+      if (!question || question.type !== "multi_choice") return;
+
+      const selectedValues = toMealPlanValueArray(mealPlanConfig.answers?.[action.questionKey]);
+      const nextAnswers = {
+        ...(mealPlanConfig.answers || {}),
+        [action.questionKey]: selectedValues,
+      };
+      const selectedLabels = getMealPlanSelectedOptionLabels(
+        question,
+        selectedValues,
+        mealPlanOptions,
+        nextAnswers
+      );
+
+      setMealPlanConfig((prev) => ({
+        ...prev,
+        answers: nextAnswers,
+        hasGeneratedPlan: false,
+      }));
+      addUserMessage(selectedLabels.length ? selectedLabels.join(", ") : "No preference");
+      await askNextMealPlanQuestion(mealPlanOptions, nextAnswers, action.questionKey);
+      return;
+    }
+
     if (action.type === "meal_plan_skip_question") {
-      const nextAnswers = { ...(mealPlanConfig.answers || {}) };
+      const question = getMealPlanQuestionByKey(action.questionKey);
+      const nextAnswers = {
+        ...(mealPlanConfig.answers || {}),
+        ...(question?.type === "multi_choice" ? { [action.questionKey]: [] } : {}),
+      };
 
       setMealPlanConfig((prev) => ({
         ...prev,
@@ -1892,6 +1990,7 @@ export default function FoodBot() {
             <>
             <ChatContainer
               messages={messages}
+              mealPlanAnswers={mealPlanConfig.answers}
               currencySymbol={currencySymbol}
               isLoading={isLoading}
               loadingMessage={loadingMessage}

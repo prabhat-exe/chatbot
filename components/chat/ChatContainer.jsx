@@ -8,6 +8,7 @@ import { getItemsFromMenuData } from "../../utils/helpers";
 
 export default function ChatContainer({
     messages,
+    mealPlanAnswers = {},
     currencySymbol = "₹",
     isLoading,
     loadingMessage,
@@ -20,7 +21,13 @@ export default function ChatContainer({
         <div className="chat-container">
             {messages.map((msg) => (
                 <div key={msg.id}>
-                    {!msg.mealPlan && <MessageBubble message={msg} onAction={onMessageAction} />}
+                    {!msg.mealPlan && (
+                        <MessageBubble
+                            message={msg}
+                            onAction={onMessageAction}
+                            mealPlanAnswers={mealPlanAnswers}
+                        />
+                    )}
 
                     {msg.component === "customization" && msg.selectedItem && (
                         <CustomizationCard
@@ -38,7 +45,13 @@ export default function ChatContainer({
                         />
                     )}
 
-                    {msg.mealPlan && <MessageBubble message={msg} onAction={onMessageAction} />}
+                    {msg.mealPlan && (
+                        <MessageBubble
+                            message={msg}
+                            onAction={onMessageAction}
+                            mealPlanAnswers={mealPlanAnswers}
+                        />
+                    )}
 
                     {msg.menuData && !msg.mealPlan && (
                         <div className="menu-section">

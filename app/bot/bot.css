@@ -435,6 +435,13 @@
   background: #eff6ff;
 }
 
+.message-action-btn.is-selected {
+  border-color: #1d4ed8;
+  background: #dbeafe;
+  color: #1e3a8a;
+  box-shadow: inset 0 0 0 1px rgba(29, 78, 216, 0.2);
+}
+
 /* Menu Section */
 .menu-section {
   margin-top: 16px;
