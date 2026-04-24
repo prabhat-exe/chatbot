@@ -652,6 +652,41 @@
   font-weight: 500;
 }
 
+.meal-plan-variation-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.meal-plan-variation-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #475569;
+  border-radius: 999px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.meal-plan-variation-btn:hover {
+  border-color: #326cd5;
+  color: #1d4ed8;
+}
+
+.meal-plan-variation-btn.is-selected {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+  color: #ffffff;
+}
+
 .meal-plan-line-price {
   flex-shrink: 0;
   color: #0f172a;

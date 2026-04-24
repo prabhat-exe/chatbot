@@ -48,6 +48,16 @@ function getVariationSummary(product, currencySymbol) {
         .join(" | ");
 }
 
+function getProductSelectionKey(product) {
+    return String(product?.product_id || product?.item_id || product?.product_name || "");
+}
+
+function getMealPlanOccurrenceSelectionKey(day, slot, item, itemIndex, product) {
+    const dayKey = day?.day ?? day?.label ?? "day";
+    const itemKey = getProductSelectionKey(product) || getPlannedItemName(item) || "item";
+    return `${dayKey}|${slot}|${itemIndex}|${itemKey}`;
+}
+
 function parseWeekInfo(day) {
     const label = String(day?.label || "");
     const match = label.match(/Week\s+(\d+)\s*-\s*Day\s+(\d+)/i);
@@ -66,7 +76,14 @@ function parseWeekInfo(day) {
     return { weekNumber, dayInWeek };
 }
 
-function ProductLine({ product, itemName, currencySymbol }) {
+function ProductLine({
+    product,
+    itemName,
+    currencySymbol,
+    selectionKey,
+    selectedVariation,
+    onVariationSelect,
+}) {
     if (!product) {
         return (
             <div className="meal-plan-line">
@@ -77,18 +94,37 @@ function ProductLine({ product, itemName, currencySymbol }) {
 
     const displayCurrency = currencySymbol || product.currency || "₹";
     const variationSummary = getVariationSummary(product, displayCurrency);
-    const basePrice = product.price_from ?? product.price ?? 0;
+    const hasVariations = Array.isArray(product?.variations) && product.variations.length > 0;
+    const displayPrice = selectedVariation?.variation_price ?? product.price ?? product.price_from ?? 0;
 
     return (
         <div className="meal-plan-line">
             <div className="meal-plan-line-main">
                 <span className="meal-plan-line-name">{product.product_name}</span>
-                {variationSummary ? (
+                {hasVariations ? (
+                    <div className="meal-plan-variation-buttons" aria-label={`Choose variation for ${product.product_name}`}>
+                        {product.variations.map((variation) => {
+                            const isSelected = String(selectedVariation?.variation_id) === String(variation.variation_id);
+                            return (
+                                <button
+                                    key={variation.variation_id}
+                                    type="button"
+                                    className={`meal-plan-variation-btn${isSelected ? " is-selected" : ""}`}
+                                    aria-pressed={isSelected}
+                                    onClick={() => onVariationSelect?.(product, variation, selectionKey)}
+                                >
+                                    <span>{variation.variation_name || "Option"}</span>
+                                    <span>{displayCurrency}{Number(variation.variation_price ?? 0)}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                ) : variationSummary ? (
                     <span className="meal-plan-line-variants">{variationSummary}</span>
                 ) : null}
             </div>
             <span className="meal-plan-line-price">
-                {displayCurrency}{basePrice}
+                {hasVariations && !selectedVariation ? "Choose" : `${displayCurrency}${displayPrice}`}
             </span>
         </div>
     );
@@ -98,6 +134,8 @@ export default function MealPlanSchedule({
     mealPlan,
     products = [],
     currencySymbol,
+    selectedVariations = {},
+    onVariationSelect,
 }) {
     const weekGroups = useMemo(() => {
         if (!mealPlan?.days?.length) return [];
@@ -196,14 +234,27 @@ export default function MealPlanSchedule({
                                                 {formatSlotLabel(slot)}
                                             </div>
                                             <div className="meal-plan-slot-items">
-                                                {(items || []).map((item, itemIndex) => (
-                                                    <ProductLine
-                                                        key={`${day.day}-${slot}-${getPlannedItemName(item) || "item"}-${itemIndex}`}
-                                                        itemName={getPlannedItemName(item)}
-                                                        product={resolvePlannedProduct(products, item)}
-                                                        currencySymbol={currencySymbol}
-                                                    />
-                                                ))}
+                                                {(items || []).map((item, itemIndex) => {
+                                                    const product = resolvePlannedProduct(products, item);
+                                                    const selectionKey = getMealPlanOccurrenceSelectionKey(
+                                                        day,
+                                                        slot,
+                                                        item,
+                                                        itemIndex,
+                                                        product
+                                                    );
+                                                    return (
+                                                        <ProductLine
+                                                            key={`${day.day}-${slot}-${getPlannedItemName(item) || "item"}-${itemIndex}`}
+                                                            itemName={getPlannedItemName(item)}
+                                                            product={product}
+                                                            currencySymbol={currencySymbol}
+                                                            selectionKey={selectionKey}
+                                                            selectedVariation={selectedVariations[selectionKey] || null}
+                                                            onVariationSelect={onVariationSelect}
+                                                        />
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     ))}

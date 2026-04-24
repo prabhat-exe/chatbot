@@ -62,6 +62,23 @@ const createEmptyMealPlanConfig = () => ({
   hasGeneratedPlan: false,
 });
 
+const getMealPlanProductSelectionKey = (product) =>
+  String(product?.product_id || product?.item_id || product?.product_name || "");
+
+const getPlannedItemName = (plannedItem) => {
+  if (typeof plannedItem === "string") return plannedItem;
+  if (plannedItem && typeof plannedItem === "object") {
+    return plannedItem.product_name || plannedItem.name || plannedItem.title || "";
+  }
+  return "";
+};
+
+const getMealPlanOccurrenceSelectionKey = (day, slot, plannedItem, itemIndex, product) => {
+  const dayKey = day?.day ?? day?.label ?? "day";
+  const itemKey = getMealPlanProductSelectionKey(product) || getPlannedItemName(plannedItem) || "item";
+  return `${dayKey}|${slot}|${itemIndex}|${itemKey}`;
+};
+
 export default function FoodBot() {
   const { cart, addToCart, removeFromCart, updateQuantity, updateCartItem, clearCart, getTotalItems, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
   const {
@@ -101,6 +118,7 @@ export default function FoodBot() {
   const [orderFlow, setOrderFlow] = useState(null);
   const [mealPlanOptions, setMealPlanOptions] = useState(null);
   const [mealPlanConfig, setMealPlanConfig] = useState(createEmptyMealPlanConfig);
+  const [mealPlanVariationSelections, setMealPlanVariationSelections] = useState({});
   const [scheduledDate, setScheduledDate] = useState(getTodayDateString());
   const [scheduledTime, setScheduledTime] = useState("");
   const [showDeliveryAddressModal, setShowDeliveryAddressModal] = useState(false);
@@ -350,6 +368,21 @@ export default function FoodBot() {
     ];
   };
 
+  const handleMealPlanVariationSelect = (mealPlanId, product, variation, selectionKey) => {
+    if (!mealPlanId || !product || !variation) return;
+
+    const occurrenceKey = selectionKey || getMealPlanProductSelectionKey(product);
+    if (!occurrenceKey) return;
+
+    setMealPlanVariationSelections((current) => ({
+      ...current,
+      [mealPlanId]: {
+        ...(current[mealPlanId] || {}),
+        [occurrenceKey]: normalizeMealPlanVariation(variation),
+      },
+    }));
+  };
+
   const buildPostAddActions = () => {
     return [
       { id: `open-cart-${Date.now()}`, label: "Open Cart", type: "open_cart" },
@@ -357,14 +390,6 @@ export default function FoodBot() {
   };
 
   const isMealPlanPackage = (item) => item?.type === "meal_plan_package";
-
-  const getPlannedItemName = (plannedItem) => {
-    if (typeof plannedItem === "string") return plannedItem;
-    if (plannedItem && typeof plannedItem === "object") {
-      return plannedItem.product_name || plannedItem.name || plannedItem.title || "";
-    }
-    return "";
-  };
 
   const buildMealPlanSignature = (mealPlan = {}, planType = "", mealsPerDay = "") => {
     const source = JSON.stringify({
@@ -481,8 +506,8 @@ export default function FoodBot() {
     return findMealPlanProduct(products, itemName);
   };
 
-  const getTaxDetailsForMealPlanProduct = (product) => {
-    const unitPrice = getMealPlanProductUnitPrice(product);
+  const getTaxDetailsForMealPlanProduct = (product, selectedVariation = null) => {
+    const unitPrice = getMealPlanProductUnitPrice(product, selectedVariation);
 
     if (!product?.map_tax_class) {
       return {
@@ -499,52 +524,65 @@ export default function FoodBot() {
     );
   };
 
-  const getMealPlanDefaultVariation = (product) => {
-    const variations = Array.isArray(product?.variations) ? product.variations : [];
-    if (!variations.length) return null;
-
-    const targetPrice = Number(product?.price_from ?? product?.price ?? 0);
-    const matchedVariation =
-      variations.find((variation) => Number(variation?.variation_price) === targetPrice) ||
-      variations.reduce((lowest, variation) => {
-        if (!lowest) return variation;
-        return Number(variation?.variation_price ?? Infinity) < Number(lowest?.variation_price ?? Infinity)
-          ? variation
-          : lowest;
-      }, null);
-
-    if (!matchedVariation) return null;
-
+  const normalizeMealPlanVariation = (variation) => {
+    if (!variation) return null;
     return {
-      variation_id: Number(matchedVariation.variation_id),
-      variation_name: matchedVariation.variation_name || "Variation",
-      variation_price: Number(matchedVariation.variation_price || 0),
+      variation_id: Number(variation.variation_id),
+      variation_name: variation.variation_name || "Variation",
+      variation_price: Number(variation.variation_price || 0),
     };
   };
 
-  const getMealPlanProductUnitPrice = (product) => {
-    const selectedVariation = getMealPlanDefaultVariation(product);
-    return selectedVariation
-      ? selectedVariation.variation_price
-      : Number(product?.price_from ?? product?.price ?? 0);
+  const getMealPlanSelectedVariation = (product, selections = {}, selectionKey = "") => {
+    const selectedKey = selectionKey || getMealPlanProductSelectionKey(product);
+    const selectedVariation = selections[selectedKey];
+
+    if (!selectedVariation) return null;
+    return normalizeMealPlanVariation(selectedVariation);
   };
 
-  const buildMealPlanOrderItems = (mealPlan, products = []) => {
+  const getMealPlanProductUnitPrice = (product, selectedVariation = null) => {
+    return selectedVariation
+      ? selectedVariation.variation_price
+      : Number(product?.price ?? product?.price_from ?? 0);
+  };
+
+  const getMealPlanProductsMissingVariations = (mealPlan, products = [], selections = {}) => {
+    const missingMap = new Map();
+
+    (mealPlan?.days || []).forEach((day) => {
+      Object.entries(day.meals || {}).forEach(([slot, plannedItems]) => {
+        (plannedItems || []).forEach((plannedItem, itemIndex) => {
+          const product = resolveMealPlanProduct(products, plannedItem);
+          const variations = Array.isArray(product?.variations) ? product.variations : [];
+          if (!product?.product_id || !variations.length) return;
+
+          const selectionKey = getMealPlanOccurrenceSelectionKey(day, slot, plannedItem, itemIndex, product);
+          if (!selections[selectionKey]) {
+            missingMap.set(selectionKey, `${product.product_name || "item"} on Day ${day.day || "?"}`);
+          }
+        });
+      });
+    });
+
+    return Array.from(missingMap.values());
+  };
+
+  const buildMealPlanOrderItems = (mealPlan, products = [], variationSelections = {}) => {
     const itemMap = new Map();
 
     (mealPlan?.days || []).forEach((day) => {
-      Object.values(day.meals || {}).forEach((plannedItems) => {
-        (plannedItems || []).forEach((plannedItem) => {
+      Object.entries(day.meals || {}).forEach(([slot, plannedItems]) => {
+        (plannedItems || []).forEach((plannedItem, itemIndex) => {
           const product = resolveMealPlanProduct(products, plannedItem);
           if (!product?.product_id) return;
 
           const itemId = Number(product.product_id);
-          const selectedVariation = getMealPlanDefaultVariation(product);
+          const selectionKey = getMealPlanOccurrenceSelectionKey(day, slot, plannedItem, itemIndex, product);
+          const selectedVariation = getMealPlanSelectedVariation(product, variationSelections, selectionKey);
           const variationKey = selectedVariation?.variation_id || "no-variation";
           const key = `${itemId}|${variationKey}|no-addons`;
-          const unitPrice = selectedVariation
-            ? selectedVariation.variation_price
-            : Number(product.price_from ?? product.price ?? 0);
+          const unitPrice = getMealPlanProductUnitPrice(product, selectedVariation);
 
           if (!itemMap.has(key)) {
             itemMap.set(key, {
@@ -558,7 +596,7 @@ export default function FoodBot() {
               unit_price: unitPrice,
               quantity: 0,
               total_price: 0,
-              tax_details: getTaxDetailsForMealPlanProduct(product),
+              tax_details: getTaxDetailsForMealPlanProduct(product, selectedVariation),
             });
           }
 
@@ -573,7 +611,8 @@ export default function FoodBot() {
   };
 
   const buildMealPlanPackage = (mealPlan, products = [], options = {}) => {
-    const flattenedItems = buildMealPlanOrderItems(mealPlan, products);
+    const variationSelections = options.variationSelections || {};
+    const flattenedItems = buildMealPlanOrderItems(mealPlan, products, variationSelections);
     const totalPrice = Number(
       flattenedItems.reduce((sum, item) => sum + Number(item.total_price || 0), 0).toFixed(2)
     );
@@ -594,6 +633,7 @@ export default function FoodBot() {
       start_date: options.startDate || "",
       meal_plan: mealPlan,
       meal_plan_products: products,
+      meal_plan_variation_selections: variationSelections,
       meal_plan_summary: {
         plan_type: options.planType || "",
         duration_label: durationLabel,
@@ -650,7 +690,11 @@ export default function FoodBot() {
     return {
       items: items.flatMap((item) =>
         isMealPlanPackage(item)
-          ? buildMealPlanOrderItems(item.meal_plan, item.meal_plan_products || [])
+          ? buildMealPlanOrderItems(
+              item.meal_plan,
+              item.meal_plan_products || [],
+              item.meal_plan_variation_selections || {}
+            )
           : [item]
       ),
       selectedDateOverride: distinctStartDates[0] || "",
@@ -944,8 +988,11 @@ export default function FoodBot() {
         hasGeneratedPlan: true,
       }));
 
+      const mealPlanId = `meal-plan-${Date.now()}`;
+
       addAssistantMessage({
         text: result.reply || "Your meal plan is ready.",
+        mealPlanId,
         mealPlan: result.meal_plan || undefined,
         mealPlanProducts: result.data?.products || [],
         actions: [
@@ -953,6 +1000,7 @@ export default function FoodBot() {
             id: `meal-plan-add-all-${Date.now()}`,
             label: "Add Whole Plan to Cart",
             type: "meal_plan_add_all_to_cart",
+            mealPlanId,
             mealPlan: result.meal_plan || undefined,
             products: result.data?.products || [],
             planType: payload.plan_type,
@@ -1286,10 +1334,25 @@ export default function FoodBot() {
     }
 
     if (action.type === "meal_plan_add_all_to_cart") {
+      const variationSelections = mealPlanVariationSelections[action.mealPlanId] || {};
+      const missingVariations = getMealPlanProductsMissingVariations(
+        action.mealPlan,
+        action.products,
+        variationSelections
+      );
+
+      if (missingVariations.length) {
+        addAssistantMessage({
+          text: `Please choose a variation for ${missingVariations.slice(0, 3).join(", ")}${missingVariations.length > 3 ? " and the remaining items" : ""} before adding the plan to cart.`,
+        });
+        return;
+      }
+
       const mealPlanPackage = buildMealPlanPackage(action.mealPlan, action.products, {
         planType: action.planType,
         mealsPerDay: action.mealsPerDay,
         mealSlotChoice: action.mealSlotChoice,
+        variationSelections,
       });
       if (!mealPlanPackage.total_price) {
         addAssistantMessage({ text: "I couldn't prepare the full meal plan package for cart." });
@@ -1302,10 +1365,25 @@ export default function FoodBot() {
     }
 
     if (action.type === "meal_plan_place_all_at_once") {
+      const variationSelections = mealPlanVariationSelections[action.mealPlanId] || {};
+      const missingVariations = getMealPlanProductsMissingVariations(
+        action.mealPlan,
+        action.products,
+        variationSelections
+      );
+
+      if (missingVariations.length) {
+        addAssistantMessage({
+          text: `Please choose a variation for ${missingVariations.slice(0, 3).join(", ")}${missingVariations.length > 3 ? " and the remaining items" : ""} before checkout.`,
+        });
+        return;
+      }
+
       const mealPlanPackage = buildMealPlanPackage(action.mealPlan, action.products, {
         planType: action.planType,
         mealsPerDay: action.mealsPerDay,
         mealSlotChoice: action.mealSlotChoice,
+        variationSelections,
       });
       if (!mealPlanPackage.total_price) {
         addAssistantMessage({ text: "I couldn't prepare the full meal plan package for checkout." });
@@ -1997,6 +2075,8 @@ export default function FoodBot() {
               onItemClick={handleItemClick}
               onAddToCart={handleAddToCart}
               onMessageAction={handleMessageAction}
+              mealPlanVariationSelections={mealPlanVariationSelections}
+              onMealPlanVariationSelect={handleMealPlanVariationSelect}
               messagesEndRef={messagesEndRef}
             />
             </>

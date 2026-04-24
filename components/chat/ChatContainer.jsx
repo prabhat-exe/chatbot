@@ -15,6 +15,8 @@ export default function ChatContainer({
     onItemClick,
     onAddToCart,
     onMessageAction,
+    mealPlanVariationSelections = {},
+    onMealPlanVariationSelect,
     messagesEndRef,
 }) {
     return (
@@ -42,6 +44,10 @@ export default function ChatContainer({
                             mealPlan={msg.mealPlan}
                             products={msg.mealPlanProducts || []}
                             currencySymbol={currencySymbol}
+                            selectedVariations={mealPlanVariationSelections[msg.mealPlanId] || {}}
+                            onVariationSelect={(product, variation, selectionKey) =>
+                                onMealPlanVariationSelect?.(msg.mealPlanId, product, variation, selectionKey)
+                            }
                         />
                     )}
 
