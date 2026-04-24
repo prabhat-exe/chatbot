@@ -6,6 +6,8 @@ import { useAuth } from "../../hooks/useAuth";
 import {
   completeProfile,
   fetchMealPlanOptions,
+  fetchFutureOrders,
+  fetchSameDayOrders,
   fetchRestaurants,
   generateMealPlan,
   placeOrder,
@@ -36,6 +38,34 @@ const getCurrentTimeString = () => {
   return `${hours}:${minutes}`;
 };
 
+const addDaysToDateString = (dateString, daysToAdd) => {
+  const date = new Date(`${dateString}T00:00:00`);
+  date.setDate(date.getDate() + daysToAdd);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const isWeekendDateString = (dateString) => {
+  const day = new Date(`${dateString}T00:00:00`).getDay();
+  return day === 0 || day === 6;
+};
+
+const buildWeekdayScheduleDates = (startDate, totalDays) => {
+  const dates = [];
+  let cursor = startDate;
+
+  while (dates.length < totalDays && cursor) {
+    if (!isWeekendDateString(cursor)) {
+      dates.push(cursor);
+    }
+    cursor = addDaysToDateString(cursor, 1);
+  }
+
+  return dates;
+};
+
 const isPastTimeForToday = (selectedDate, selectedTime) => {
   if (!selectedDate || !selectedTime) return false;
   if (selectedDate !== getTodayDateString()) return false;
@@ -43,6 +73,7 @@ const isPastTimeForToday = (selectedDate, selectedTime) => {
 };
 
 const normalizeNameKey = (value = "") => String(value).trim().toLowerCase();
+const normalizeSlotKey = (value = "") => String(value).trim().toLowerCase().replace(/[_-]+/g, " ");
 const DEFAULT_DELIVERY_ADDRESS = {
   address: "",
   lat: "",
@@ -79,6 +110,84 @@ const getMealPlanOccurrenceSelectionKey = (day, slot, plannedItem, itemIndex, pr
   return `${dayKey}|${slot}|${itemIndex}|${itemKey}`;
 };
 
+function OrdersView({
+  groups = [],
+  loading,
+  error,
+  currencySymbol = "₹",
+  onRefresh,
+  title = "Meal Orders",
+  description = "Upcoming scheduled meals from your placed orders.",
+  emptyMessage = "No upcoming scheduled orders found.",
+  loadingMessage = "Loading orders...",
+  countLabel = "meals",
+  showPlanDetails = true,
+}) {
+  return (
+    <div className="w-full max-w-3xl rounded-2xl border border-gray-100 bg-white p-5 text-gray-800 shadow-xl">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-xl font-semibold">{title}</h3>
+          <p className="mt-1 text-sm text-gray-500">{description}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Refresh
+        </button>
+      </div>
+
+      {loading && <div className="rounded-lg bg-blue-50 p-4 text-sm text-blue-700">{loadingMessage}</div>}
+      {error && <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+
+      {!loading && !error && groups.length === 0 && (
+        <div className="rounded-lg bg-gray-50 p-4 text-sm text-gray-600">{emptyMessage}</div>
+      )}
+
+      {!loading && !error && groups.length > 0 && (
+        <div className="space-y-4">
+          {groups.map((group) => (
+            <div key={group.date} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <h4 className="font-semibold text-gray-900">{group.date}</h4>
+                <span className="text-xs font-medium text-gray-500">{group.items?.length || 0} {countLabel}</span>
+              </div>
+
+              <div className="space-y-2">
+                {(group.items || []).map((item, index) => (
+                  <div key={`${item.order_id}-${item.scheduled_time}-${item.item_name}-${index}`} className="rounded-lg bg-white p-3 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-gray-900">{item.item_name}</p>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {showPlanDetails
+                            ? `${item.meal_slot || "Meal"} · ${item.scheduled_time || "--:--"} · Week ${item.plan_week_number || "-"}, Day ${item.plan_day_number || "-"}`
+                            : `Qty ${item.quantity || 1}${item.scheduled_time ? ` · ${item.scheduled_time}` : ""}`}
+                        </p>
+                        {item.selected_variation?.variation_name && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            Variation: {item.selected_variation.variation_name}
+                          </p>
+                        )}
+                        <p className="mt-1 text-xs text-gray-400">Order ID: {item.order_id}</p>
+                      </div>
+                      <p className="font-semibold text-gray-900">
+                        {currencySymbol}{Number(item.total_price || 0).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FoodBot() {
   const { cart, addToCart, removeFromCart, updateQuantity, updateCartItem, clearCart, getTotalItems, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
   const {
@@ -107,6 +216,14 @@ export default function FoodBot() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileMessage, setProfileMessage] = useState('');
   const [showCart, setShowCart] = useState(false);
+  const [showFutureOrders, setShowFutureOrders] = useState(false);
+  const [showSameDayOrders, setShowSameDayOrders] = useState(false);
+  const [futureOrders, setFutureOrders] = useState([]);
+  const [futureOrdersLoading, setFutureOrdersLoading] = useState(false);
+  const [futureOrdersError, setFutureOrdersError] = useState("");
+  const [sameDayOrders, setSameDayOrders] = useState([]);
+  const [sameDayOrdersLoading, setSameDayOrdersLoading] = useState(false);
+  const [sameDayOrdersError, setSameDayOrdersError] = useState("");
   const [cartGlow, setCartGlow] = useState(false);
   const [cartButtonRef, setCartButtonRef] = useState(null);
   const [floatingItem, setFloatingItem] = useState(null);
@@ -130,6 +247,10 @@ export default function FoodBot() {
   const currencySymbol = (selectedRestaurant?.country_currency || "₹").trim() || "₹";
   const headerSubtitle = showCart
     ? "Review your order"
+    : showSameDayOrders
+      ? "Items placed for today"
+    : showFutureOrders
+      ? "Upcoming scheduled meals"
     : orderFlow === "meal_plan"
       ? "Plan, customize & order"
       : "Chat to customize & order";
@@ -177,6 +298,44 @@ export default function FoodBot() {
       setToast(null);
       toastTimeoutRef.current = null;
     }, 4000);
+  };
+
+  const loadFutureOrders = async () => {
+    if (!isLoggedIn) {
+      showToast("Please login to view your meal orders.");
+      return;
+    }
+
+    try {
+      setFutureOrdersLoading(true);
+      setFutureOrdersError("");
+      const result = await fetchFutureOrders();
+      setFutureOrders(result?.orders || []);
+    } catch (error) {
+      console.error(error);
+      setFutureOrdersError("Unable to load meal orders right now.");
+    } finally {
+      setFutureOrdersLoading(false);
+    }
+  };
+
+  const loadSameDayOrders = async () => {
+    if (!isLoggedIn) {
+      showToast("Please login to view Pick Your Item.");
+      return;
+    }
+
+    try {
+      setSameDayOrdersLoading(true);
+      setSameDayOrdersError("");
+      const result = await fetchSameDayOrders();
+      setSameDayOrders(result?.orders || []);
+    } catch (error) {
+      console.error(error);
+      setSameDayOrdersError("Unable to load Pick Your Item right now.");
+    } finally {
+      setSameDayOrdersLoading(false);
+    }
   };
 
   const refreshRestaurantSelection = async (restaurantId = selectedRestaurant?.id) => {
@@ -610,6 +769,101 @@ export default function FoodBot() {
     return Array.from(itemMap.values());
   };
 
+  const getMealSlotTime = (slotTimes = {}, slot = "") => {
+    const direct = slotTimes[slot];
+    if (direct) return direct;
+
+    const normalizedSlot = normalizeSlotKey(slot);
+    const matched = Object.entries(slotTimes).find(
+      ([slotLabel]) => normalizeSlotKey(slotLabel) === normalizedSlot
+    );
+
+    return matched?.[1] || "";
+  };
+
+  const buildMealPlanScheduleItems = (packageItem) => {
+    const mealPlan = packageItem?.meal_plan;
+    const products = packageItem?.meal_plan_products || [];
+    const variationSelections = packageItem?.meal_plan_variation_selections || {};
+    const slotTimes = packageItem?.meal_plan_summary?.slot_times || {};
+    const totalDays = Number(
+      packageItem?.meal_plan_summary?.total_days ||
+      mealPlan?.duration_days ||
+      (mealPlan?.days || []).length ||
+      0
+    );
+    const scheduleDates = buildWeekdayScheduleDates(packageItem?.start_date, totalDays);
+    const scheduleItems = [];
+    const errors = [];
+
+    (mealPlan?.days || []).forEach((day, dayIndex) => {
+      const scheduledDate = scheduleDates[dayIndex];
+      const planDayNumber = Number(day?.day || dayIndex + 1);
+      const planWeekNumber = Math.floor((planDayNumber - 1) / 5) + 1;
+
+      if (!scheduledDate) {
+        errors.push(`Missing scheduled date for Day ${planDayNumber}`);
+        return;
+      }
+
+      Object.entries(day.meals || {}).forEach(([slot, plannedItems]) => {
+        const scheduledTime = getMealSlotTime(slotTimes, slot);
+        if (!String(scheduledTime || "").trim()) {
+          errors.push(`Missing delivery time for ${slot} on Day ${planDayNumber}`);
+          return;
+        }
+
+        (plannedItems || []).forEach((plannedItem, itemIndex) => {
+          const product = resolveMealPlanProduct(products, plannedItem);
+          const itemName = getPlannedItemName(plannedItem) || "planned item";
+
+          if (!product?.product_id) {
+            errors.push(`Could not match ${itemName} on Day ${planDayNumber}`);
+            return;
+          }
+
+          const selectionKey = getMealPlanOccurrenceSelectionKey(day, slot, plannedItem, itemIndex, product);
+          const variations = Array.isArray(product?.variations) ? product.variations : [];
+          const selectedVariation = getMealPlanSelectedVariation(product, variationSelections, selectionKey);
+
+          if (variations.length && !selectedVariation) {
+            errors.push(`Choose a variation for ${product.product_name} on Day ${planDayNumber}`);
+            return;
+          }
+
+          const unitPrice = getMealPlanProductUnitPrice(product, selectedVariation);
+          const taxDetails = getTaxDetailsForMealPlanProduct(product, selectedVariation);
+
+          scheduleItems.push({
+            cart_key: `${packageItem.cart_key}|${scheduledDate}|${slot}|${itemIndex}|${product.product_id}|${selectedVariation?.variation_id || "no-variation"}`,
+            item_id: Number(product.product_id),
+            name: product.product_name,
+            image: product.image_url,
+            category_id: product.category_id,
+            selected_variation: selectedVariation,
+            addons: [],
+            unit_price: unitPrice,
+            quantity: 1,
+            total_price: unitPrice,
+            tax_details: taxDetails,
+            scheduled_date: scheduledDate,
+            scheduled_time: scheduledTime,
+            plan_day_number: planDayNumber,
+            plan_week_number: planWeekNumber,
+            meal_slot: slot,
+            is_meal_plan_item: true,
+          });
+        });
+      });
+    });
+
+    if (scheduleDates.length !== totalDays) {
+      errors.push("Could not generate all weekday delivery dates for this meal plan.");
+    }
+
+    return { scheduleItems, errors };
+  };
+
   const buildMealPlanPackage = (mealPlan, products = [], options = {}) => {
     const variationSelections = options.variationSelections || {};
     const flattenedItems = buildMealPlanOrderItems(mealPlan, products, variationSelections);
@@ -687,6 +941,21 @@ export default function FoodBot() {
       };
     }
 
+    const scheduleItems = [];
+    const scheduleErrors = [];
+
+    packageItems.forEach((item) => {
+      const result = buildMealPlanScheduleItems(item);
+      scheduleItems.push(...result.scheduleItems);
+      scheduleErrors.push(...result.errors);
+    });
+
+    if (scheduleErrors.length) {
+      return {
+        error: scheduleErrors.slice(0, 3).join(". "),
+      };
+    }
+
     return {
       items: items.flatMap((item) =>
         isMealPlanPackage(item)
@@ -697,6 +966,7 @@ export default function FoodBot() {
             )
           : [item]
       ),
+      schedule: scheduleItems,
       selectedDateOverride: distinctStartDates[0] || "",
     };
   };
@@ -706,8 +976,8 @@ export default function FoodBot() {
   };
 
   const getStartFlowActions = () => ([
-    { id: `start-same-day-order-${Date.now()}`, label: "Same Day Order", type: "start_same_day_order" },
-    { id: `start-meal-plan-order-${Date.now()}`, label: "Meal Preparation & Order", type: "start_meal_plan_order" },
+    { id: `start-same-day-order-${Date.now()}`, label: "Pick Your Item", type: "start_same_day_order" },
+    { id: `start-meal-plan-order-${Date.now()}`, label: "Meal Orders", type: "start_meal_plan_order" },
   ]);
 
   const buildWelcomeMessage = () => ({
@@ -1075,7 +1345,11 @@ export default function FoodBot() {
       }
 
       const normalizedCheckoutItems = flattenedCheckout.items || checkoutItems;
+      const mealPlanScheduleItems = flattenedCheckout.schedule || [];
+      const hasMealPlanCheckout = mealPlanScheduleItems.length > 0;
+      const pricingCheckoutItems = hasMealPlanCheckout ? mealPlanScheduleItems : normalizedCheckoutItems;
       const effectiveSelectedDate = flattenedCheckout.selectedDateOverride || scheduledDate || "";
+      const mealPlanPackages = checkoutItems.filter((item) => isMealPlanPackage(item));
       const mealPlanOrderComment = checkoutItems
         .filter((item) => isMealPlanPackage(item))
         .map((item) => buildMealTimeNotes(item.meal_plan_summary?.slot_times || {}))
@@ -1124,9 +1398,9 @@ export default function FoodBot() {
         return;
       }
 
-      const totalQuantity = normalizedCheckoutItems.reduce((sum, item) => sum + Number(item.quantity), 0);
+      const totalQuantity = pricingCheckoutItems.reduce((sum, item) => sum + Number(item.quantity), 0);
       const totalPrice = Number(
-        normalizedCheckoutItems.reduce((sum, item) => sum + Number(item.total_price), 0).toFixed(2)
+        pricingCheckoutItems.reduce((sum, item) => sum + Number(item.total_price), 0).toFixed(2)
       );
       const today = getTodayDateString();
 
@@ -1140,7 +1414,7 @@ export default function FoodBot() {
         order_type: 1,
         total_quantity: totalQuantity,
         total_price: totalPrice,
-        total_tax: Number(getTotalTaxForItems(normalizedCheckoutItems).toFixed(2)),
+        total_tax: Number(getTotalTaxForItems(pricingCheckoutItems).toFixed(2)),
         order_comments: mealPlanOrderComment,
         payment_method: "upi",
         selectedDate: effectiveSelectedDate,
@@ -1149,12 +1423,47 @@ export default function FoodBot() {
         delivery_address: deliveryAddress.address,
         address_lat: Number(deliveryAddress.lat),
         address_long: Number(deliveryAddress.lng),
+        is_meal_plan: hasMealPlanCheckout,
+        plan_type: mealPlanPackages[0]?.meal_plan_summary?.plan_type || "",
+        days_per_week: hasMealPlanCheckout ? 5 : undefined,
+        total_plan_days: mealPlanPackages[0]?.meal_plan_summary?.total_days || undefined,
+        start_date: mealPlanPackages[0]?.start_date || undefined,
+        meal_slot_times: mealPlanPackages[0]?.meal_plan_summary?.slot_times || undefined,
+        meal_plan_summary: mealPlanPackages[0]?.meal_plan_summary || undefined,
         items: normalizedCheckoutItems.map((item) => ({
           item_id: Number(item.item_id),
           item_name: item.name,
           price: Number(item.unit_price),
           total_price: Number(item.total_price),
           quantity: Number(item.quantity),
+          notes: "",
+          customize_status: item.selected_variation || item.addons?.length ? 1 : 0,
+          addon_status: item.addons?.length ? 1 : 0,
+          selected_variation: item.selected_variation
+            ? {
+                variation_id: Number(item.selected_variation.variation_id),
+                variation_name: item.selected_variation.variation_name || "",
+                variation_price: Number(item.selected_variation.variation_price || 0),
+              }
+            : null,
+          addons: (item.addons || []).map((addon) => ({
+            addon_id: Number(addon.addon_id),
+            addon_name: addon.addon_name || addon.name || "",
+            price: Number(addon.price || 0),
+          })),
+        })),
+        schedule: mealPlanScheduleItems.map((item) => ({
+          scheduled_date: item.scheduled_date,
+          scheduled_time: item.scheduled_time,
+          plan_day_number: Number(item.plan_day_number),
+          plan_week_number: Number(item.plan_week_number),
+          meal_slot: item.meal_slot,
+          item_id: Number(item.item_id),
+          item_name: item.name,
+          price: Number(item.unit_price),
+          total_price: Number(item.total_price),
+          quantity: Number(item.quantity),
+          is_meal: 1,
           notes: "",
           customize_status: item.selected_variation || item.addons?.length ? 1 : 0,
           addon_status: item.addons?.length ? 1 : 0,
@@ -1185,8 +1494,10 @@ export default function FoodBot() {
         setScheduledTime("");
         addAssistantMessage({
           text: options.successMessage || (
-            isFutureOrder
-              ? `Your future order is placed successfully and payment is completed. Order ID: ${result.order_id}`
+            hasMealPlanCheckout
+              ? `Your meal plan is scheduled successfully. Order ID: ${result.order_id}`
+              : isFutureOrder
+              ? `Your meal order is placed successfully and payment is completed. Order ID: ${result.order_id}`
               : `Your order is placed successfully. Order ID: ${result.order_id}`
           ),
         });
@@ -1214,7 +1525,7 @@ export default function FoodBot() {
     if (action.type === "start_same_day_order") {
       if (!selectedRestaurant?.id) {
         promptSelectRestaurantFirst(
-          "Please select a restaurant first, then you can continue with same day ordering."
+          "Please select a restaurant first, then you can continue with Pick Your Item."
         );
         return;
       }
@@ -1222,9 +1533,9 @@ export default function FoodBot() {
       setOrderFlow("same_day");
       resetMealPlanConfig();
       setMealPlanOptions(null);
-      addUserMessage("Same Day Order");
+      addUserMessage("Pick Your Item");
       addAssistantMessage({
-        text: "Same day order selected. Ask for any dish or category to get started.",
+        text: "Pick your item selected. Ask for any dish or category to get started.",
       });
       return;
     }
@@ -1235,7 +1546,7 @@ export default function FoodBot() {
         return;
       }
 
-      addUserMessage("Meal Preparation & Order");
+      addUserMessage("Meal Orders");
       setOrderFlow("meal_plan");
       resetMealPlanConfig();
       try {
@@ -1680,8 +1991,10 @@ export default function FoodBot() {
     }
 
     // If currently on cart page, switch to chat
-    if (showCart) {
+    if (showCart || showFutureOrders || showSameDayOrders) {
       setShowCart(false);
+      setShowFutureOrders(false);
+      setShowSameDayOrders(false);
 
       // small delay to allow UI transition
       setTimeout(() => {
@@ -1696,8 +2009,10 @@ export default function FoodBot() {
   // Handle ESC key to go back to chat
   useEffect(() => {
     const handleKeyPress = (event) => {
-      if (event.key === 'Escape' && showCart) {
+      if (event.key === 'Escape' && (showCart || showFutureOrders || showSameDayOrders)) {
         setShowCart(false);
+        setShowFutureOrders(false);
+        setShowSameDayOrders(false);
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }, 100);
@@ -1706,7 +2021,7 @@ export default function FoodBot() {
 
     document.addEventListener('keydown', handleKeyPress);
     return () => document.removeEventListener('keydown', handleKeyPress);
-  }, [showCart, messagesEndRef]);
+  }, [showCart, showFutureOrders, showSameDayOrders, messagesEndRef]);
 
   // Handle page reload/leave warning
   useEffect(() => {
@@ -1944,7 +2259,7 @@ export default function FoodBot() {
           <span>🤖</span>
         </div>
         <div className="header-info">
-          <h1>{showCart ? 'Your Cart' : 'AI Food Bot'}</h1>
+          <h1>{showCart ? 'Your Cart' : showSameDayOrders ? 'Pick Your Item' : showFutureOrders ? 'Meal Orders' : 'AI Food Bot'}</h1>
           <p>{headerSubtitle}</p>
           <div className="mt-2">
             <select
@@ -1969,10 +2284,12 @@ export default function FoodBot() {
           </div>
         </div>
         <div className="header-cart">
-          {showCart ? (
+          {showCart || showFutureOrders || showSameDayOrders ? (
             <button
               onClick={() => {
                 setShowCart(false);
+                setShowFutureOrders(false);
+                setShowSameDayOrders(false);
                 // Scroll to bottom after state update
                 setTimeout(() => {
                   messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1986,7 +2303,11 @@ export default function FoodBot() {
             <button
               ref={setCartButtonRef}
               disabled={!selectedRestaurant?.id}
-              onClick={() => setShowCart(!showCart)}
+              onClick={() => {
+                setShowFutureOrders(false);
+                setShowSameDayOrders(false);
+                setShowCart(!showCart);
+              }}
               className={`cart-button ${cartGlow ? 'cart-glow' : ''} ${!selectedRestaurant?.id ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               🛒 Cart {getTotalItems() > 0 && `(${getTotalItems()})`}
@@ -2012,24 +2333,52 @@ export default function FoodBot() {
 
             </>
           ) : (
-            <button
-              onClick={() => {
-                logout();
-                setAuthPhone("");
-                setAuthOtp("");
-                setAuthMessage("Logged out successfully.");
-              }}
-              className="logout-button"
-            >
-              Logout
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  setShowCart(false);
+                  setShowFutureOrders(false);
+                  setShowSameDayOrders(true);
+                  loadSameDayOrders();
+                }}
+                className="login-button"
+              >
+                Items Order
+                </button>
+              <button
+                onClick={() => {
+                  setShowCart(false);
+                  setShowSameDayOrders(false);
+                  setShowFutureOrders(true);
+                  loadFutureOrders();
+                }}
+                className="login-button"
+              >
+                Meal Orders
+              </button>
+              <button
+                onClick={() => {
+                  logout();
+                  setAuthPhone("");
+                  setAuthOtp("");
+                  setAuthMessage("Logged out successfully.");
+                  setShowFutureOrders(false);
+                  setShowSameDayOrders(false);
+                  setFutureOrders([]);
+                  setSameDayOrders([]);
+                }}
+                className="logout-button"
+              >
+                Logout
+              </button>
+            </>
           )}
         </div>
       </header>
 
       {/* Main Chat Area */}
       <main className="food-bot-main">
-        <div className={`view-container ${showCart ? 'cart-active' : 'chat-active'}`}>
+        <div className={`view-container ${showCart || showFutureOrders || showSameDayOrders ? 'cart-active' : 'chat-active'}`}>
           {showCart ? (
             <div className="cart-view flex items-center justify-center min-h-full p-4">
               <CartSummary
@@ -2062,6 +2411,32 @@ export default function FoodBot() {
                 }}
                 onProceedCheckout={executeCheckout}
 
+              />
+            </div>
+          ) : showSameDayOrders ? (
+            <div className="cart-view flex items-center justify-center min-h-full p-4">
+      <OrdersView
+                groups={sameDayOrders}
+                loading={sameDayOrdersLoading}
+                error={sameDayOrdersError}
+                currencySymbol={currencySymbol}
+                onRefresh={loadSameDayOrders}
+                title="Pick Your Item"
+                description="Orders you placed for today."
+                emptyMessage="No Pick Your Item orders found for today."
+                loadingMessage="Loading Pick Your Item..."
+                countLabel="items"
+                showPlanDetails={false}
+              />
+            </div>
+          ) : showFutureOrders ? (
+            <div className="cart-view flex items-center justify-center min-h-full p-4">
+              <OrdersView
+                groups={futureOrders}
+                loading={futureOrdersLoading}
+                error={futureOrdersError}
+                currencySymbol={currencySymbol}
+                onRefresh={loadFutureOrders}
               />
             </div>
           ) : (

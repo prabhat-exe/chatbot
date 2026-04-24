@@ -97,6 +97,42 @@ export async function placeOrder(payload) {
   return res.json();
 }
 
+export async function fetchFutureOrders() {
+  const headers = { Accept: "application/json" };
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch("/api/orders/future", {
+    method: "GET",
+    headers,
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Future orders API error: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function fetchSameDayOrders() {
+  const headers = { Accept: "application/json" };
+  const token = getAuthToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch("/api/orders/same-day", {
+    method: "GET",
+    headers,
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Same day orders API error: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
 export async function addToCart(orderItem) {
   const headers = { "Content-Type": "application/json" };
   const token = getAuthToken();
