@@ -97,12 +97,13 @@ export async function placeOrder(payload) {
   return res.json();
 }
 
-export async function fetchFutureOrders() {
+export async function fetchFutureOrders(type = "") {
   const headers = { Accept: "application/json" };
   const token = getAuthToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch("/api/orders/future", {
+  const query = type ? `?type=${encodeURIComponent(type)}` : "";
+  const res = await fetch(`/api/orders/future${query}`, {
     method: "GET",
     headers,
     cache: "no-store",

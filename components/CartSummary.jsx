@@ -368,9 +368,9 @@ export default function CartSummary({
 
             {!hasMealPlanPackage && (
                 <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
-                    <h4 className="font-semibold text-sm text-gray-800">Schedule your order</h4>
+                    <h4 className="font-semibold text-sm text-gray-800">Schedule your item order</h4>
                     <p className="mt-1 text-xs text-gray-600">
-                        You can place a future-day order today and pay once now.
+                        Pick today for a current order, or choose a future date for a scheduled item order.
                     </p>
 
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">

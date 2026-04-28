@@ -2,12 +2,36 @@
 
 import { useState } from "react";
 
+function normalizeVariation(variation) {
+    if (!variation) return null;
+
+    return {
+        ...variation,
+        variation_id: Number(variation.variation_id ?? variation.id ?? 0),
+        variation_name: variation.variation_name || "Variation",
+        variation_price: Number(variation.variation_price ?? variation.web_price ?? variation.price ?? 0),
+    };
+}
+
+function getLowestPricedVariation(item) {
+    const variations = Array.isArray(item?.variations) ? item.variations : [];
+    if (!variations.length) return null;
+
+    return normalizeVariation(
+        variations.reduce((lowest, variation) => {
+            const lowestPrice = Number(lowest?.variation_price ?? lowest?.web_price ?? lowest?.price ?? 0);
+            const variationPrice = Number(variation?.variation_price ?? variation?.web_price ?? variation?.price ?? 0);
+            return variationPrice < lowestPrice ? variation : lowest;
+        }, variations[0])
+    );
+}
+
 export default function CustomizationCard({
     item,
     onAddToCart,
     currencySymbol = "₹",
 }) {
-    const [selectedVariation, setSelectedVariation] = useState(null);
+    const [selectedVariation, setSelectedVariation] = useState(() => getLowestPricedVariation(item));
     const [quantity, setQuantity] = useState(1);
     const [selectedAddons, setSelectedAddons] = useState([]);
 
@@ -41,9 +65,7 @@ export default function CustomizationCard({
     const basePrice =
         selectedVariation
             ? Number(selectedVariation.variation_price)
-            : item.variations.length > 0
-                ? 0 // size must be selected
-                : item.price;
+            : item.price;
 
     const totalPrice = (basePrice + addonsPrice) * quantity;
     // console.log(item);
@@ -77,12 +99,14 @@ export default function CustomizationCard({
                     {item.variations.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
                             {item.variations.map(v => {
-                                const isSelected = selectedVariation?.variation_id === v.variation_id;
+                                const variationId = v.variation_id ?? v.id;
+                                const variationPrice = Number(v.variation_price ?? v.web_price ?? v.price ?? 0);
+                                const isSelected = String(selectedVariation?.variation_id) === String(v.variation_id ?? v.id);
 
                                 return (
                                     <button
-                                        key={v.variation_id}
-                                        onClick={() => setSelectedVariation(v)}   // ✅ SINGLE SELECT
+                                        key={variationId}
+                                        onClick={() => setSelectedVariation(normalizeVariation(v))}
                                         className={`px-4 py-2 rounded-lg font-medium text-sm transition-all
                         ${
                                             isSelected
@@ -91,9 +115,9 @@ export default function CustomizationCard({
                                         }`}
                                     >
                                         {v.variation_name}
-                                        {Number(v.variation_price) > 0 && (
+                                        {variationPrice > 0 && (
                                             <span className="ml-1 text-xs">
-                                                +{currencySymbol}{v.variation_price}
+                                                +{currencySymbol}{variationPrice}
                                             </span>
                                         )}
                                     </button>
@@ -191,7 +215,6 @@ export default function CustomizationCard({
                         Cancel
                     </button>
                     <button
-                        disabled={item.variations.length > 0 && !selectedVariation}
                         onClick={async (e) => {
                             const buttonRect = e.currentTarget.getBoundingClientRect();
                             const orderItem = {
@@ -228,11 +251,7 @@ export default function CustomizationCard({
                             // console.log(orderItem);
                             await onAddToCart(orderItem, buttonRect); // send to page.jsx with button position
                         }}
-                        className={`flex-1 h-11 rounded-xl font-semibold ${
-                            item.variations.length > 0 && !selectedVariation
-                                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                : "bg-blue-900 hover:bg-blue-800 text-white"
-                        }`}
+                        className="flex-1 h-11 rounded-xl font-semibold bg-blue-900 hover:bg-blue-800 text-white"
                     >
                         Add {currencySymbol}{totalPrice.toFixed(2)}
                     </button>

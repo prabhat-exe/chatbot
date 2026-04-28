@@ -3,6 +3,30 @@
 import { useState, useEffect } from "react";
 import { calculateTaxFromSubCategory } from "../utils/helpers";
 
+function normalizeVariation(variation) {
+    if (!variation) return null;
+
+    return {
+        ...variation,
+        variation_id: Number(variation.variation_id ?? variation.id ?? 0),
+        variation_name: variation.variation_name || "Variation",
+        variation_price: Number(variation.variation_price ?? variation.web_price ?? variation.price ?? 0),
+    };
+}
+
+function getLowestPricedVariation(item) {
+    const variations = Array.isArray(item?.variations) ? item.variations : [];
+    if (!variations.length) return null;
+
+    return normalizeVariation(
+        variations.reduce((lowest, variation) => {
+            const lowestPrice = Number(lowest?.variation_price ?? lowest?.web_price ?? lowest?.price ?? 0);
+            const variationPrice = Number(variation?.variation_price ?? variation?.web_price ?? variation?.price ?? 0);
+            return variationPrice < lowestPrice ? variation : lowest;
+        }, variations[0])
+    );
+}
+
 export default function ItemDetailsModal({
     item,
     onAddToCart,
@@ -10,7 +34,7 @@ export default function ItemDetailsModal({
     taxInfoMap = {},
     currencySymbol = "₹",
 }) {
-    const [selectedVariation, setSelectedVariation] = useState(null);
+    const [selectedVariation, setSelectedVariation] = useState(() => getLowestPricedVariation(item));
     const [quantity, setQuantity] = useState(1);
     const [selectedAddons, setSelectedAddons] = useState([]);
 
@@ -60,9 +84,7 @@ export default function ItemDetailsModal({
     const basePrice =
         selectedVariation
             ? Number(selectedVariation.variation_price)
-            : item.variations.length > 0
-                ? 0
-                : item.price;
+            : item.price;
 
     const unitPrice = basePrice + addonsPrice;
     const totalPrice = unitPrice * quantity;
@@ -188,16 +210,18 @@ export default function ItemDetailsModal({
                         </p>
                         <div className="item-modal-options">
                             {item.variations.map(v => {
-                                const isSelected = selectedVariation?.variation_id === v.variation_id;
+                                const variationId = v.variation_id ?? v.id;
+                                const variationPrice = Number(v.variation_price ?? v.web_price ?? v.price ?? 0);
+                                const isSelected = String(selectedVariation?.variation_id) === String(variationId);
                                 return (
                                     <button
-                                        key={v.variation_id}
-                                        onClick={() => setSelectedVariation(v)}
+                                        key={variationId}
+                                        onClick={() => setSelectedVariation(normalizeVariation(v))}
                                         className={`item-modal-option ${isSelected ? "selected" : ""}`}
                                     >
                                         {v.variation_name}
-                                        {Number(v.variation_price) > 0 && (
-                                            <span className="option-price">{currencySymbol}{v.variation_price}</span>
+                                        {variationPrice > 0 && (
+                                            <span className="option-price">{currencySymbol}{variationPrice}</span>
                                         )}
                                     </button>
                                 );
@@ -263,12 +287,8 @@ export default function ItemDetailsModal({
                         Cancel
                     </button>
                     <button
-                        disabled={item.variations?.length > 0 && !selectedVariation}
                         onClick={handleAddToCart}
-                        className={`item-modal-btn add ${item.variations?.length > 0 && !selectedVariation
-                            ? "disabled"
-                            : ""
-                            }`}
+                        className="item-modal-btn add"
                     >
                         Add to Cart • {currencySymbol}{totalPrice.toFixed(2)}
                     </button>

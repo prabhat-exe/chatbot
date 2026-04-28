@@ -42,7 +42,7 @@ function getVariationSummary(product, currencySymbol) {
     return product.variations
         .map((variation) => {
             const name = variation.variation_name || "Option";
-            const price = Number(variation.variation_price ?? 0);
+            const price = Number(variation.variation_price ?? variation.web_price ?? variation.price ?? 0);
             return `${name} ${currencySymbol}${price}`;
         })
         .join(" | ");
@@ -56,6 +56,30 @@ function getMealPlanOccurrenceSelectionKey(day, slot, item, itemIndex, product) 
     const dayKey = day?.day ?? day?.label ?? "day";
     const itemKey = getProductSelectionKey(product) || getPlannedItemName(item) || "item";
     return `${dayKey}|${slot}|${itemIndex}|${itemKey}`;
+}
+
+function normalizeVariation(variation) {
+    if (!variation) return null;
+
+    return {
+        ...variation,
+        variation_id: Number(variation.variation_id ?? variation.id ?? 0),
+        variation_name: variation.variation_name || "Option",
+        variation_price: Number(variation.variation_price ?? variation.web_price ?? variation.price ?? 0),
+    };
+}
+
+function getLowestPricedVariation(product) {
+    const variations = Array.isArray(product?.variations) ? product.variations : [];
+    if (!variations.length) return null;
+
+    return normalizeVariation(
+        variations.reduce((lowest, variation) => {
+            const lowestPrice = Number(lowest?.variation_price ?? lowest?.web_price ?? lowest?.price ?? 0);
+            const variationPrice = Number(variation?.variation_price ?? variation?.web_price ?? variation?.price ?? 0);
+            return variationPrice < lowestPrice ? variation : lowest;
+        }, variations[0])
+    );
 }
 
 function parseWeekInfo(day) {
@@ -104,17 +128,19 @@ function ProductLine({
                 {hasVariations ? (
                     <div className="meal-plan-variation-buttons" aria-label={`Choose variation for ${product.product_name}`}>
                         {product.variations.map((variation) => {
-                            const isSelected = String(selectedVariation?.variation_id) === String(variation.variation_id);
+                            const variationId = variation.variation_id ?? variation.id;
+                            const variationPrice = Number(variation.variation_price ?? variation.web_price ?? variation.price ?? 0);
+                            const isSelected = String(selectedVariation?.variation_id) === String(variationId);
                             return (
                                 <button
-                                    key={variation.variation_id}
+                                    key={variationId}
                                     type="button"
                                     className={`meal-plan-variation-btn${isSelected ? " is-selected" : ""}`}
                                     aria-pressed={isSelected}
                                     onClick={() => onVariationSelect?.(product, variation, selectionKey)}
                                 >
                                     <span>{variation.variation_name || "Option"}</span>
-                                    <span>{displayCurrency}{Number(variation.variation_price ?? 0)}</span>
+                                    <span>{displayCurrency}{variationPrice}</span>
                                 </button>
                             );
                         })}
@@ -250,7 +276,7 @@ export default function MealPlanSchedule({
                                                             product={product}
                                                             currencySymbol={currencySymbol}
                                                             selectionKey={selectionKey}
-                                                            selectedVariation={selectedVariations[selectionKey] || null}
+                                                            selectedVariation={selectedVariations[selectionKey] || getLowestPricedVariation(product)}
                                                             onVariationSelect={onVariationSelect}
                                                         />
                                                     );

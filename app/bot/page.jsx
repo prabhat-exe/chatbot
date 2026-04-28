@@ -217,10 +217,14 @@ export default function FoodBot() {
   const [profileMessage, setProfileMessage] = useState('');
   const [showCart, setShowCart] = useState(false);
   const [showFutureOrders, setShowFutureOrders] = useState(false);
+  const [showScheduledItemOrders, setShowScheduledItemOrders] = useState(false);
   const [showSameDayOrders, setShowSameDayOrders] = useState(false);
   const [futureOrders, setFutureOrders] = useState([]);
   const [futureOrdersLoading, setFutureOrdersLoading] = useState(false);
   const [futureOrdersError, setFutureOrdersError] = useState("");
+  const [scheduledItemOrders, setScheduledItemOrders] = useState([]);
+  const [scheduledItemOrdersLoading, setScheduledItemOrdersLoading] = useState(false);
+  const [scheduledItemOrdersError, setScheduledItemOrdersError] = useState("");
   const [sameDayOrders, setSameDayOrders] = useState([]);
   const [sameDayOrdersLoading, setSameDayOrdersLoading] = useState(false);
   const [sameDayOrdersError, setSameDayOrdersError] = useState("");
@@ -249,6 +253,8 @@ export default function FoodBot() {
     ? "Review your order"
     : showSameDayOrders
       ? "Items placed for today"
+    : showScheduledItemOrders
+      ? "Future Pick Your Item orders"
     : showFutureOrders
       ? "Upcoming scheduled meals"
     : orderFlow === "meal_plan"
@@ -309,13 +315,32 @@ export default function FoodBot() {
     try {
       setFutureOrdersLoading(true);
       setFutureOrdersError("");
-      const result = await fetchFutureOrders();
+      const result = await fetchFutureOrders("meal-plan");
       setFutureOrders(result?.orders || []);
     } catch (error) {
       console.error(error);
       setFutureOrdersError("Unable to load meal orders right now.");
     } finally {
       setFutureOrdersLoading(false);
+    }
+  };
+
+  const loadScheduledItemOrders = async () => {
+    if (!isLoggedIn) {
+      showToast("Please login to view scheduled item orders.");
+      return;
+    }
+
+    try {
+      setScheduledItemOrdersLoading(true);
+      setScheduledItemOrdersError("");
+      const result = await fetchFutureOrders("item");
+      setScheduledItemOrders(result?.orders || []);
+    } catch (error) {
+      console.error(error);
+      setScheduledItemOrdersError("Unable to load scheduled item orders right now.");
+    } finally {
+      setScheduledItemOrdersLoading(false);
     }
   };
 
@@ -420,9 +445,43 @@ export default function FoodBot() {
     }
   }, [scheduledDate, scheduledTime]);
 
+  const normalizeVariationOption = (variation) => {
+    if (!variation) return null;
+
+    return {
+      ...variation,
+      variation_id: Number(variation.variation_id ?? variation.id ?? 0),
+      variation_name: variation.variation_name || "Variation",
+      variation_price: Number(variation.variation_price ?? variation.web_price ?? variation.price ?? 0),
+    };
+  };
+
+  const getLowestPricedItemVariation = (item) => {
+    const variations = Array.isArray(item?.variations) ? item.variations : [];
+    if (!variations.length) return null;
+
+    return normalizeVariationOption(
+      variations.reduce((lowest, variation) => {
+        const lowestPrice = Number(lowest?.variation_price ?? lowest?.web_price ?? lowest?.price ?? 0);
+        const variationPrice = Number(variation?.variation_price ?? variation?.web_price ?? variation?.price ?? 0);
+        return variationPrice < lowestPrice ? variation : lowest;
+      }, variations[0])
+    );
+  };
+
+  const createDefaultItemSelection = (item) => {
+    const normalizedItem = normalizeMenuItem(item || {});
+
+    return {
+      item: normalizedItem,
+      selectedVariation: getLowestPricedItemVariation(normalizedItem),
+      selectedAddons: [],
+    };
+  };
+
   const buildOrderItemFromSelection = (selection) => {
     const item = normalizeMenuItem(selection.item || {});
-    const selectedVariation = selection.selectedVariation || null;
+    const selectedVariation = normalizeVariationOption(selection.selectedVariation) || getLowestPricedItemVariation(item);
     const selectedAddons = selection.selectedAddons || [];
     const basePrice = selectedVariation
       ? Number(selectedVariation.variation_price)
@@ -465,7 +524,7 @@ export default function FoodBot() {
   const buildVariationActions = (item) => {
     return (item.variations || []).map((variation) => ({
       id: `variation-${item.item_id}-${variation.variation_id}`,
-      label: `${variation.variation_name}${Number(variation.variation_price) > 0 ? ` • ${currencySymbol}${variation.variation_price}` : ""}`,
+      label: `${variation.variation_name}${Number(variation.variation_price ?? variation.web_price ?? variation.price ?? 0) > 0 ? ` • ${currencySymbol}${Number(variation.variation_price ?? variation.web_price ?? variation.price ?? 0)}` : ""}`,
       type: "select_variation",
       item,
       variation,
@@ -686,18 +745,30 @@ export default function FoodBot() {
   const normalizeMealPlanVariation = (variation) => {
     if (!variation) return null;
     return {
-      variation_id: Number(variation.variation_id),
+      variation_id: Number(variation.variation_id ?? variation.id ?? 0),
       variation_name: variation.variation_name || "Variation",
-      variation_price: Number(variation.variation_price || 0),
+      variation_price: Number(variation.variation_price ?? variation.web_price ?? variation.price ?? 0),
     };
+  };
+
+  const getLowestPricedMealPlanVariation = (product) => {
+    const variations = Array.isArray(product?.variations) ? product.variations : [];
+    if (!variations.length) return null;
+
+    return normalizeMealPlanVariation(
+      variations.reduce((lowest, variation) => {
+        const lowestPrice = Number(lowest?.variation_price ?? lowest?.web_price ?? lowest?.price ?? 0);
+        const variationPrice = Number(variation?.variation_price ?? variation?.web_price ?? variation?.price ?? 0);
+        return variationPrice < lowestPrice ? variation : lowest;
+      }, variations[0])
+    );
   };
 
   const getMealPlanSelectedVariation = (product, selections = {}, selectionKey = "") => {
     const selectedKey = selectionKey || getMealPlanProductSelectionKey(product);
     const selectedVariation = selections[selectedKey];
 
-    if (!selectedVariation) return null;
-    return normalizeMealPlanVariation(selectedVariation);
+    return normalizeMealPlanVariation(selectedVariation) || getLowestPricedMealPlanVariation(product);
   };
 
   const getMealPlanProductUnitPrice = (product, selectedVariation = null) => {
@@ -717,7 +788,7 @@ export default function FoodBot() {
           if (!product?.product_id || !variations.length) return;
 
           const selectionKey = getMealPlanOccurrenceSelectionKey(day, slot, plannedItem, itemIndex, product);
-          if (!selections[selectionKey]) {
+          if (!getMealPlanSelectedVariation(product, selections, selectionKey)) {
             missingMap.set(selectionKey, `${product.product_name || "item"} on Day ${day.day || "?"}`);
           }
         });
@@ -725,6 +796,27 @@ export default function FoodBot() {
     });
 
     return Array.from(missingMap.values());
+  };
+
+  const buildDefaultMealPlanVariationSelections = (mealPlan, products = []) => {
+    const defaults = {};
+
+    (mealPlan?.days || []).forEach((day) => {
+      Object.entries(day.meals || {}).forEach(([slot, plannedItems]) => {
+        (plannedItems || []).forEach((plannedItem, itemIndex) => {
+          const product = resolveMealPlanProduct(products, plannedItem);
+          if (!product?.product_id) return;
+
+          const lowestVariation = getLowestPricedMealPlanVariation(product);
+          if (!lowestVariation) return;
+
+          const selectionKey = getMealPlanOccurrenceSelectionKey(day, slot, plannedItem, itemIndex, product);
+          defaults[selectionKey] = lowestVariation;
+        });
+      });
+    });
+
+    return defaults;
   };
 
   const buildMealPlanOrderItems = (mealPlan, products = [], variationSelections = {}) => {
@@ -1259,20 +1351,28 @@ export default function FoodBot() {
       }));
 
       const mealPlanId = `meal-plan-${Date.now()}`;
+      const mealPlan = result.meal_plan || undefined;
+      const products = result.data?.products || [];
+      const defaultVariationSelections = buildDefaultMealPlanVariationSelections(mealPlan, products);
+
+      setMealPlanVariationSelections((current) => ({
+        ...current,
+        [mealPlanId]: defaultVariationSelections,
+      }));
 
       addAssistantMessage({
         text: result.reply || "Your meal plan is ready.",
         mealPlanId,
-        mealPlan: result.meal_plan || undefined,
-        mealPlanProducts: result.data?.products || [],
+        mealPlan,
+        mealPlanProducts: products,
         actions: [
           {
             id: `meal-plan-add-all-${Date.now()}`,
             label: "Add Whole Plan to Cart",
             type: "meal_plan_add_all_to_cart",
             mealPlanId,
-            mealPlan: result.meal_plan || undefined,
-            products: result.data?.products || [],
+            mealPlan,
+            products,
             planType: payload.plan_type,
             mealsPerDay: payload.meals_per_day,
             mealSlotChoice: payload.meal_slot_choice,
@@ -1497,7 +1597,7 @@ export default function FoodBot() {
             hasMealPlanCheckout
               ? `Your meal plan is scheduled successfully. Order ID: ${result.order_id}`
               : isFutureOrder
-              ? `Your meal order is placed successfully and payment is completed. Order ID: ${result.order_id}`
+              ? `Your scheduled item order is placed successfully. Order ID: ${result.order_id}`
               : `Your order is placed successfully. Order ID: ${result.order_id}`
           ),
         });
@@ -1728,7 +1828,7 @@ export default function FoodBot() {
       const activeSelection =
         pendingSelection?.item?.item_id === item.item_id
           ? pendingSelection
-          : { item, selectedVariation: null, selectedAddons: [] };
+          : createDefaultItemSelection(item);
       setPendingSelection(activeSelection);
       addAssistantMessage({
         text: `Choose a variation for ${item.name}:`,
@@ -1746,11 +1846,11 @@ export default function FoodBot() {
       const activeSelection =
         pendingSelection?.item?.item_id === action.item.item_id
           ? pendingSelection
-          : { item: action.item, selectedVariation: null, selectedAddons: [] };
+          : createDefaultItemSelection(action.item);
 
       const updatedSelection = {
         ...activeSelection,
-        selectedVariation: action.variation,
+        selectedVariation: normalizeVariationOption(action.variation),
       };
       setPendingSelection(updatedSelection);
       addAssistantMessage({
@@ -1766,7 +1866,7 @@ export default function FoodBot() {
       const activeSelection =
         pendingSelection?.item?.item_id === item.item_id
           ? pendingSelection
-          : { item, selectedVariation: null, selectedAddons: [] };
+          : createDefaultItemSelection(item);
       const selectedAddons = activeSelection.selectedAddons || [];
       setPendingSelection(activeSelection);
       addAssistantMessage({
@@ -1788,7 +1888,7 @@ export default function FoodBot() {
       const activeSelection =
         pendingSelection?.item?.item_id === action.item.item_id
           ? pendingSelection
-          : { item: action.item, selectedVariation: null, selectedAddons: [] };
+          : createDefaultItemSelection(action.item);
       const selectedAddons = activeSelection.selectedAddons || [];
       const addonId = Number(action.addon.addon_id);
       const exists = selectedAddons.some((addon) => Number(addon.addon_id) === addonId);
@@ -1821,7 +1921,7 @@ export default function FoodBot() {
       const activeSelection =
         pendingSelection?.item?.item_id === item.item_id
           ? pendingSelection
-          : { item, selectedVariation: null, selectedAddons: [] };
+          : createDefaultItemSelection(item);
       const updatedSelection = {
         ...activeSelection,
         selectedAddons: [],
@@ -1840,7 +1940,7 @@ export default function FoodBot() {
       const activeSelection =
         pendingSelection?.item?.item_id === item.item_id
           ? pendingSelection
-          : { item, selectedVariation: null, selectedAddons: [] };
+          : createDefaultItemSelection(item);
       setPendingSelection(activeSelection);
       addAssistantMessage({
         text: `Add-on selection updated for ${item.name}.`,
@@ -1852,16 +1952,6 @@ export default function FoodBot() {
     if (action.type === "add_selected_to_cart") {
       if (!pendingSelection?.item) {
         addAssistantMessage({ text: "Please select an item first." });
-        return;
-      }
-
-      const item = normalizeMenuItem(pendingSelection.item);
-      const needsVariation = (item.variations?.length || 0) > 0;
-      if (needsVariation && !pendingSelection.selectedVariation) {
-        addAssistantMessage({
-          text: `Please choose a variation for ${item.name} first.`,
-          actions: buildSelectionActions(pendingSelection),
-        });
         return;
       }
 
@@ -1936,13 +2026,16 @@ export default function FoodBot() {
 
       const item = normalizeMenuItem(pendingSelection.item);
       const needsVariation = (item.variations?.length || 0) > 0;
-      let updatedSelection = { ...pendingSelection };
+      let updatedSelection = {
+        ...pendingSelection,
+        selectedVariation: pendingSelection.selectedVariation || getLowestPricedItemVariation(item),
+      };
 
-      if (needsVariation && !pendingSelection.selectedVariation) {
+      if (needsVariation) {
         const byNumber = Number.parseInt(lower, 10);
         if (!Number.isNaN(byNumber) && item.variations[byNumber - 1]) {
           addUserMessage(userText);
-          updatedSelection.selectedVariation = item.variations[byNumber - 1];
+          updatedSelection.selectedVariation = normalizeVariationOption(item.variations[byNumber - 1]);
           setPendingSelection(updatedSelection);
           addAssistantMessage({
             text: `Selected ${updatedSelection.selectedVariation.variation_name}.`,
@@ -1956,7 +2049,7 @@ export default function FoodBot() {
         );
         if (matched) {
           addUserMessage(userText);
-          updatedSelection.selectedVariation = matched;
+          updatedSelection.selectedVariation = normalizeVariationOption(matched);
           setPendingSelection(updatedSelection);
           addAssistantMessage({
             text: `Selected ${matched.variation_name}.`,
@@ -1968,17 +2061,6 @@ export default function FoodBot() {
 
       if (lower.includes("add to cart")) {
         addUserMessage(userText);
-        if (needsVariation && !updatedSelection.selectedVariation) {
-          const list = item.variations
-            .map((v, idx) => `${idx + 1}. ${v.variation_name}`)
-            .join(", ");
-          addAssistantMessage({
-            text: `Please choose a variation first: ${list}`,
-            actions: buildSelectionActions(updatedSelection),
-          });
-          return;
-        }
-
         const orderItem = buildOrderItemFromSelection(updatedSelection);
         await handleAddToCart(orderItem);
         setPendingSelection(null);
@@ -1991,10 +2073,11 @@ export default function FoodBot() {
     }
 
     // If currently on cart page, switch to chat
-    if (showCart || showFutureOrders || showSameDayOrders) {
+    if (showCart || showFutureOrders || showSameDayOrders || showScheduledItemOrders) {
       setShowCart(false);
       setShowFutureOrders(false);
       setShowSameDayOrders(false);
+      setShowScheduledItemOrders(false);
 
       // small delay to allow UI transition
       setTimeout(() => {
@@ -2009,10 +2092,11 @@ export default function FoodBot() {
   // Handle ESC key to go back to chat
   useEffect(() => {
     const handleKeyPress = (event) => {
-      if (event.key === 'Escape' && (showCart || showFutureOrders || showSameDayOrders)) {
+      if (event.key === 'Escape' && (showCart || showFutureOrders || showSameDayOrders || showScheduledItemOrders)) {
         setShowCart(false);
         setShowFutureOrders(false);
         setShowSameDayOrders(false);
+        setShowScheduledItemOrders(false);
         setTimeout(() => {
           messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
         }, 100);
@@ -2021,7 +2105,7 @@ export default function FoodBot() {
 
     document.addEventListener('keydown', handleKeyPress);
     return () => document.removeEventListener('keydown', handleKeyPress);
-  }, [showCart, showFutureOrders, showSameDayOrders, messagesEndRef]);
+  }, [showCart, showFutureOrders, showSameDayOrders, showScheduledItemOrders, messagesEndRef]);
 
   // Handle page reload/leave warning
   useEffect(() => {
@@ -2095,12 +2179,12 @@ export default function FoodBot() {
     const normalizedItem = normalizeMenuItem(item || {});
     const needsVariation = (normalizedItem.variations?.length || 0) > 0;
     const hasAddons = (normalizedItem.addons?.length || 0) > 0;
-    const selection = { item: normalizedItem, selectedVariation: null, selectedAddons: [] };
+    const selection = createDefaultItemSelection(normalizedItem);
     setPendingSelection(selection);
 
     if (needsVariation) {
       addAssistantMessage({
-        text: `You selected ${normalizedItem.name}. Choose a variation below:`,
+        text: `You selected ${normalizedItem.name}. ${selection.selectedVariation?.variation_name || "Lowest price"} is selected by default.`,
         actions: buildSelectionActions(selection),
       });
       return;
@@ -2259,7 +2343,7 @@ export default function FoodBot() {
           <span>🤖</span>
         </div>
         <div className="header-info">
-          <h1>{showCart ? 'Your Cart' : showSameDayOrders ? 'Pick Your Item' : showFutureOrders ? 'Meal Orders' : 'AI Food Bot'}</h1>
+          <h1>{showCart ? 'Your Cart' : showSameDayOrders ? 'Pick Your Item' : showScheduledItemOrders ? 'Scheduled Items' : showFutureOrders ? 'Meal Orders' : 'AI Food Bot'}</h1>
           <p>{headerSubtitle}</p>
           <div className="mt-2">
             <select
@@ -2284,12 +2368,13 @@ export default function FoodBot() {
           </div>
         </div>
         <div className="header-cart">
-          {showCart || showFutureOrders || showSameDayOrders ? (
+          {showCart || showFutureOrders || showSameDayOrders || showScheduledItemOrders ? (
             <button
               onClick={() => {
                 setShowCart(false);
                 setShowFutureOrders(false);
                 setShowSameDayOrders(false);
+                setShowScheduledItemOrders(false);
                 // Scroll to bottom after state update
                 setTimeout(() => {
                   messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -2306,6 +2391,7 @@ export default function FoodBot() {
               onClick={() => {
                 setShowFutureOrders(false);
                 setShowSameDayOrders(false);
+                setShowScheduledItemOrders(false);
                 setShowCart(!showCart);
               }}
               className={`cart-button ${cartGlow ? 'cart-glow' : ''} ${!selectedRestaurant?.id ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -2338,17 +2424,31 @@ export default function FoodBot() {
                 onClick={() => {
                   setShowCart(false);
                   setShowFutureOrders(false);
+                  setShowScheduledItemOrders(false);
                   setShowSameDayOrders(true);
                   loadSameDayOrders();
                 }}
                 className="login-button"
               >
-                Items Order
+                Today Items
                 </button>
               <button
                 onClick={() => {
                   setShowCart(false);
                   setShowSameDayOrders(false);
+                  setShowFutureOrders(false);
+                  setShowScheduledItemOrders(true);
+                  loadScheduledItemOrders();
+                }}
+                className="login-button"
+              >
+                Scheduled Items
+              </button>
+              <button
+                onClick={() => {
+                  setShowCart(false);
+                  setShowSameDayOrders(false);
+                  setShowScheduledItemOrders(false);
                   setShowFutureOrders(true);
                   loadFutureOrders();
                 }}
@@ -2364,8 +2464,10 @@ export default function FoodBot() {
                   setAuthMessage("Logged out successfully.");
                   setShowFutureOrders(false);
                   setShowSameDayOrders(false);
+                  setShowScheduledItemOrders(false);
                   setFutureOrders([]);
                   setSameDayOrders([]);
+                  setScheduledItemOrders([]);
                 }}
                 className="logout-button"
               >
@@ -2378,7 +2480,7 @@ export default function FoodBot() {
 
       {/* Main Chat Area */}
       <main className="food-bot-main">
-        <div className={`view-container ${showCart || showFutureOrders || showSameDayOrders ? 'cart-active' : 'chat-active'}`}>
+        <div className={`view-container ${showCart || showFutureOrders || showSameDayOrders || showScheduledItemOrders ? 'cart-active' : 'chat-active'}`}>
           {showCart ? (
             <div className="cart-view flex items-center justify-center min-h-full p-4">
               <CartSummary
@@ -2425,6 +2527,22 @@ export default function FoodBot() {
                 description="Orders you placed for today."
                 emptyMessage="No Pick Your Item orders found for today."
                 loadingMessage="Loading Pick Your Item..."
+                countLabel="items"
+                showPlanDetails={false}
+              />
+            </div>
+          ) : showScheduledItemOrders ? (
+            <div className="cart-view flex items-center justify-center min-h-full p-4">
+              <OrdersView
+                groups={scheduledItemOrders}
+                loading={scheduledItemOrdersLoading}
+                error={scheduledItemOrdersError}
+                currencySymbol={currencySymbol}
+                onRefresh={loadScheduledItemOrders}
+                title="Scheduled Items"
+                description="Pick Your Item orders scheduled for a future date or time."
+                emptyMessage="No scheduled item orders found."
+                loadingMessage="Loading scheduled item orders..."
                 countLabel="items"
                 showPlanDetails={false}
               />

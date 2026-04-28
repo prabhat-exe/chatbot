@@ -1,4 +1,10 @@
 export default function MenuCard({ item, onClick, currencySymbol = "₹" }) {
+    const variationPrices = Array.isArray(item.variations)
+        ? item.variations.map((variation) => Number(variation.variation_price ?? variation.web_price ?? variation.price ?? 0))
+        : [];
+    const lowestVariationPrice = variationPrices.length ? Math.min(...variationPrices) : null;
+    const displayPrice = lowestVariationPrice ?? Number(item.price || 0);
+
     return (
         <div
             onClick={() => onClick(item)}
@@ -37,9 +43,9 @@ export default function MenuCard({ item, onClick, currencySymbol = "₹" }) {
                         <h3 className="font-bold text-sm text-gray-900 truncate">
                             {item.name}
                         </h3>
-                        {item.price > 0 && (
+                        {displayPrice > 0 && (
                             <span className="font-bold text-blue-900 text-sm whitespace-nowrap">
-                                {currencySymbol}{item.price}
+                                {currencySymbol}{displayPrice}
                             </span>
                         )}
                     </div>

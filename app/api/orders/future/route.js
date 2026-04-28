@@ -2,6 +2,9 @@ export async function GET(request) {
   try {
     const authHeader = request.headers.get("authorization");
     const laravelApiBase = process.env.LARAVEL_API_BASE_URL || "http://127.0.0.1:8001/api";
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get("type");
+    const query = type ? `?type=${encodeURIComponent(type)}` : "";
 
     const headers = {
       Accept: "application/json",
@@ -10,7 +13,7 @@ export async function GET(request) {
       headers.Authorization = authHeader;
     }
 
-    const res = await fetch(`${laravelApiBase}/orders/future`, {
+    const res = await fetch(`${laravelApiBase}/orders/future${query}`, {
       method: "GET",
       headers,
       cache: "no-store",
