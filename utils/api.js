@@ -41,13 +41,16 @@ export async function sendChatMessage(message, restaurantId) {
   return res.json();
 }
 
-export async function fetchRestaurants() {
-  const res = await fetch("/api/restaurants", {
+export async function fetchRestaurantEmbeddingStatus(restaurantId) {
+  const res = await fetch(`/api/restaurants/${encodeURIComponent(restaurantId)}/embedding-status`, {
     method: "GET",
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`Restaurants API error: ${res.status}`);
-  return res.json();
+  const payload = await res.json();
+  return {
+    ...payload,
+    http_status: res.status,
+  };
 }
 
 export async function fetchMealPlanOptions(restaurantId) {

@@ -370,7 +370,7 @@ export default function CartSummary({
                 <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
                     <h4 className="font-semibold text-sm text-gray-800">Schedule your item order</h4>
                     <p className="mt-1 text-xs text-gray-600">
-                        Pick today for a current order, or choose a future date for a scheduled item order.
+                        Pick today for a current order, or choose a future date for a scheduled item order. Delivery time must be at least 30 minutes from now.
                     </p>
 
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">

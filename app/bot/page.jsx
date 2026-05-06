@@ -2,17 +2,17 @@
 
 import "./bot.css";
 import { useState, useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { useAuth } from "../../hooks/useAuth";
 import {
   completeProfile,
   fetchMealPlanOptions,
   fetchFutureOrders,
   fetchSameDayOrders,
-  fetchRestaurants,
+  fetchRestaurantEmbeddingStatus,
   generateMealPlan,
   placeOrder,
 } from "../../utils/api";
-import { clearSession } from "../../utils/sessionId";
 import { useCart } from "../../hooks/useCart";
 import { useChat } from "../../hooks/useChat";
 import { calculateTaxFromSubCategory, normalizeMenuItem } from "../../utils/helpers";
@@ -23,19 +23,33 @@ import AuthModal from "../../components/AuthModal";
 import ProfileModal from "../../components/ProfileModal";
 import DeliveryAddressModal from "../../components/DeliveryAddressModal";
 
-const getTodayDateString = () => {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
+const DELIVERY_LEAD_TIME_MINUTES = 30;
+
+const formatDateString = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 };
 
-const getCurrentTimeString = () => {
-  const now = new Date();
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
+const formatTimeString = (date) => {
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
   return `${hours}:${minutes}`;
+};
+
+const getTodayDateString = () => {
+  return formatDateString(new Date());
+};
+
+const getMinimumDeliveryDateTime = (fromDate = new Date()) => {
+  const minimumDeliveryTime = new Date(fromDate);
+  minimumDeliveryTime.setMinutes(minimumDeliveryTime.getMinutes() + DELIVERY_LEAD_TIME_MINUTES);
+
+  return {
+    date: formatDateString(minimumDeliveryTime),
+    time: formatTimeString(minimumDeliveryTime),
+  };
 };
 
 const addDaysToDateString = (dateString, daysToAdd) => {
@@ -66,10 +80,12 @@ const buildWeekdayScheduleDates = (startDate, totalDays) => {
   return dates;
 };
 
-const isPastTimeForToday = (selectedDate, selectedTime) => {
+const isTimeTooSoonForDelivery = (selectedDate, selectedTime) => {
   if (!selectedDate || !selectedTime) return false;
-  if (selectedDate !== getTodayDateString()) return false;
-  return selectedTime < getCurrentTimeString();
+  const minimumDelivery = getMinimumDeliveryDateTime();
+  if (selectedDate < minimumDelivery.date) return true;
+  if (selectedDate > minimumDelivery.date) return false;
+  return selectedTime < minimumDelivery.time;
 };
 
 const normalizeNameKey = (value = "") => String(value).trim().toLowerCase();
@@ -108,6 +124,12 @@ const getMealPlanOccurrenceSelectionKey = (day, slot, plannedItem, itemIndex, pr
   const dayKey = day?.day ?? day?.label ?? "day";
   const itemKey = getMealPlanProductSelectionKey(product) || getPlannedItemName(plannedItem) || "item";
   return `${dayKey}|${slot}|${itemIndex}|${itemKey}`;
+};
+
+const getRestaurantIdFromPathname = (pathname = "") => {
+  const segments = pathname.split("/").filter(Boolean);
+  const botSegmentIndex = segments.indexOf("bot");
+  return botSegmentIndex >= 0 ? segments[botSegmentIndex + 1] || "" : "";
 };
 
 function OrdersView({
@@ -189,6 +211,8 @@ function OrdersView({
 }
 
 export default function FoodBot() {
+  const pathname = usePathname();
+  const routeRestaurantId = getRestaurantIdFromPathname(pathname);
   const { cart, addToCart, removeFromCart, updateQuantity, updateCartItem, clearCart, getTotalItems, getTotalTax, getTaxBreakdown, setTaxInfo } = useCart();
   const {
     messages,
@@ -200,7 +224,6 @@ export default function FoodBot() {
     addAssistantMessage,
     addUserMessage,
     messagesEndRef,
-    resetChat,
   } = useChat();
   const { isLoggedIn, login, verifyOtp, logout } = useAuth();
   const [showAuthInline, setShowAuthInline] = useState(false);
@@ -232,7 +255,6 @@ export default function FoodBot() {
   const [cartButtonRef, setCartButtonRef] = useState(null);
   const [floatingItem, setFloatingItem] = useState(null);
   const [pendingSelection, setPendingSelection] = useState(null);
-  const [restaurants, setRestaurants] = useState([]);
   const [restaurantsLoading, setRestaurantsLoading] = useState(true);
   const [restaurantsError, setRestaurantsError] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState(null);
@@ -246,6 +268,7 @@ export default function FoodBot() {
   const [deliveryAddress, setDeliveryAddress] = useState(DEFAULT_DELIVERY_ADDRESS);
   const [pendingCheckoutRequest, setPendingCheckoutRequest] = useState(null);
   const [toast, setToast] = useState(null);
+  const [deliveryClock, setDeliveryClock] = useState(() => Date.now());
   const hasShownWelcomePromptRef = useRef(false);
   const toastTimeoutRef = useRef(null);
   const currencySymbol = (selectedRestaurant?.country_currency || "₹").trim() || "₹";
@@ -263,35 +286,55 @@ export default function FoodBot() {
   const deliveryAddressStorageKey = selectedRestaurant?.id
     ? `delivery_address_${selectedRestaurant.id}`
     : null;
+  const minimumDelivery = getMinimumDeliveryDateTime(new Date(deliveryClock));
 
   useEffect(() => {
     const bootstrapRestaurants = async () => {
       try {
         setRestaurantsLoading(true);
         setRestaurantsError("");
-        const res = await fetchRestaurants();
-        const list = res?.data || [];
-        setRestaurants(list);
+        if (!routeRestaurantId) {
+          setSelectedRestaurant(null);
+          return;
+        }
 
-        const savedId = localStorage.getItem("selected_restaurant_id");
-        if (savedId) {
-          const matched = list.find((r) => String(r.id) === String(savedId));
-          if (matched) setSelectedRestaurant(matched);
+        const res = await fetchRestaurantEmbeddingStatus(routeRestaurantId);
+        const restaurant = res?.restaurant;
+        if (res?.ready && restaurant?.id) {
+          setSelectedRestaurant(restaurant);
+          localStorage.setItem("selected_restaurant_id", String(restaurant.id));
+          localStorage.setItem("selected_restaurant_name", restaurant.name || "");
+        } else {
+          setSelectedRestaurant(null);
+          setRestaurantsError(
+            res?.error ||
+            res?.errors?.[0] ||
+            res?.details ||
+            `Restaurant ${routeRestaurantId} embeddings are not ready yet.`
+          );
         }
       } catch (err) {
         console.error(err);
-        setRestaurantsError("Unable to load restaurants. Please refresh.");
+        setRestaurantsError("Unable to check restaurant embeddings. Please refresh.");
       } finally {
         setRestaurantsLoading(false);
       }
     };
     bootstrapRestaurants();
-  }, []);
+  }, [routeRestaurantId]);
 
   useEffect(() => () => {
     if (toastTimeoutRef.current) {
       clearTimeout(toastTimeoutRef.current);
     }
+  }, []);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setDeliveryClock(Date.now());
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
   }, []);
 
   const showToast = (message, type = "error") => {
@@ -366,15 +409,11 @@ export default function FoodBot() {
   const refreshRestaurantSelection = async (restaurantId = selectedRestaurant?.id) => {
     if (!restaurantId) return selectedRestaurant;
 
-    const res = await fetchRestaurants();
-    const list = res?.data || [];
-    setRestaurants(list);
-
-    const matched = list.find((restaurant) => String(restaurant.id) === String(restaurantId));
-    if (matched) {
-      setSelectedRestaurant(matched);
-      localStorage.setItem("selected_restaurant_id", String(matched.id));
-      return matched;
+    const res = await fetchRestaurantEmbeddingStatus(restaurantId);
+    if (res?.ready && res?.restaurant?.id) {
+      setSelectedRestaurant(res.restaurant);
+      localStorage.setItem("selected_restaurant_id", String(res.restaurant.id));
+      return res.restaurant;
     }
 
     return selectedRestaurant;
@@ -440,10 +479,18 @@ export default function FoodBot() {
   }, [deliveryAddress, deliveryAddressStorageKey]);
 
   useEffect(() => {
-    if (isPastTimeForToday(scheduledDate, scheduledTime)) {
+    const nextMinimumDelivery = getMinimumDeliveryDateTime();
+
+    if (scheduledDate && scheduledDate < nextMinimumDelivery.date) {
+      setScheduledDate(nextMinimumDelivery.date);
+      setScheduledTime("");
+      return;
+    }
+
+    if (isTimeTooSoonForDelivery(scheduledDate, scheduledTime)) {
       setScheduledTime("");
     }
-  }, [scheduledDate, scheduledTime]);
+  }, [deliveryClock, scheduledDate, scheduledTime]);
 
   const normalizeVariationOption = (variation) => {
     if (!variation) return null;
@@ -1083,11 +1130,16 @@ export default function FoodBot() {
 
   useEffect(() => {
     if (restaurantsLoading || restaurantsError || hasShownWelcomePromptRef.current) return;
+    if (!selectedRestaurant?.id) {
+      hasShownWelcomePromptRef.current = true;
+      addAssistantMessage({ text: "Please open this bot with a restaurant link like /bot/1." });
+      return;
+    }
 
     hasShownWelcomePromptRef.current = true;
     addAssistantMessage(buildWelcomeMessage());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [restaurantsLoading, restaurantsError]);
+  }, [restaurantsLoading, restaurantsError, selectedRestaurant?.id]);
 
   const getOrderPlacementErrorMessage = (error) => {
     const message = String(error?.message || "");
@@ -1505,6 +1557,20 @@ export default function FoodBot() {
       const today = getTodayDateString();
 
       const isFutureOrder = Boolean(effectiveSelectedDate && effectiveSelectedDate > today);
+
+      const currentMinimumDelivery = getMinimumDeliveryDateTime();
+
+      if (!hasMealPlanCheckout && effectiveSelectedDate && effectiveSelectedDate < currentMinimumDelivery.date) {
+        showToast(`Please choose a delivery time at least ${DELIVERY_LEAD_TIME_MINUTES} minutes from now.`);
+        setShowCart(true);
+        return;
+      }
+
+      if (!hasMealPlanCheckout && isTimeTooSoonForDelivery(effectiveSelectedDate, scheduledTime)) {
+        showToast(`Please choose a delivery time at least ${DELIVERY_LEAD_TIME_MINUTES} minutes from now.`);
+        setShowCart(true);
+        return;
+      }
 
       const payload = {
         user_id: userId,
@@ -2168,7 +2234,7 @@ export default function FoodBot() {
   };
 
   const handleScheduledTimeChange = (nextTime) => {
-    if (isPastTimeForToday(scheduledDate, nextTime)) {
+    if (isTimeTooSoonForDelivery(scheduledDate, nextTime)) {
       setScheduledTime("");
       return;
     }
@@ -2196,29 +2262,6 @@ export default function FoodBot() {
         : `You selected ${normalizedItem.name}.`,
       actions: buildSelectionActions(selection),
     });
-  };
-
-  const handleRestaurantSelect = (restaurant) => {
-    if (!restaurant?.id) return;
-    const switching = selectedRestaurant && selectedRestaurant.id !== restaurant.id;
-    setSelectedRestaurant(restaurant);
-    localStorage.setItem("selected_restaurant_id", String(restaurant.id));
-    localStorage.setItem("selected_restaurant_name", restaurant.name || "");
-
-    if (switching) {
-      clearCart();
-      clearSession();
-      resetMealPlanConfig();
-      setMealPlanOptions(null);
-      setOrderFlow(null);
-      setScheduledDate(getTodayDateString());
-      setScheduledTime("");
-      resetChat();
-      addAssistantMessage({
-        text: `Switched to ${restaurant.name}. Choose how you'd like to continue.`,
-        actions: getStartFlowActions(),
-      });
-    }
   };
 
   const handleSendPhoneLogin = async () => {
@@ -2345,25 +2388,12 @@ export default function FoodBot() {
         <div className="header-info">
           <h1>{showCart ? 'Your Cart' : showSameDayOrders ? 'Pick Your Item' : showScheduledItemOrders ? 'Scheduled Items' : showFutureOrders ? 'Meal Orders' : 'AI Food Bot'}</h1>
           <p>{headerSubtitle}</p>
-          <div className="mt-2">
-            <select
-              value={selectedRestaurant?.id || ""}
-              onChange={(e) => {
-                const picked = restaurants.find((r) => String(r.id) === e.target.value);
-                handleRestaurantSelect(picked);
-              }}
-              disabled={restaurantsLoading}
-              className="rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-800"
-            >
-              <option value="">{restaurantsLoading ? "Loading restaurants..." : "Select restaurant"}</option>
-              {restaurants.map((restaurant) => (
-                <option key={restaurant.id} value={restaurant.id}>
-                  {restaurant.name}
-                </option>
-              ))}
-            </select>
+          <div className="restaurant-status">
+            {restaurantsLoading
+              ? "Loading restaurant..."
+              : selectedRestaurant?.name || "No restaurant selected"}
             {restaurantsError && (
-              <p className="mt-1 text-xs text-red-600">{restaurantsError}</p>
+              <p>{restaurantsError}</p>
             )}
           </div>
         </div>
@@ -2504,8 +2534,8 @@ export default function FoodBot() {
                 scheduledTime={scheduledTime}
                 onScheduledDateChange={setScheduledDate}
                 onScheduledTimeChange={handleScheduledTimeChange}
-                minDate={getTodayDateString()}
-                minTime={scheduledDate === getTodayDateString() ? getCurrentTimeString() : ""}
+                minDate={minimumDelivery.date}
+                minTime={scheduledDate === minimumDelivery.date ? minimumDelivery.time : ""}
                 onRequireLogin={() => {
                   setShowCart(false);
                   setAuthStep("phone");
