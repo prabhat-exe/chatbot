@@ -52,6 +52,76 @@ const getMinimumDeliveryDateTime = (fromDate = new Date()) => {
   };
 };
 
+const formatGroupDateLabel = (dateString = "") => {
+  if (!dateString) return "Today";
+  const today = getTodayDateString();
+  if (dateString === today) return `Today · ${dateString}`;
+
+  const tomorrow = addDaysToDateString(today, 1);
+  if (dateString === tomorrow) return `Tomorrow · ${dateString}`;
+
+  return dateString;
+};
+
+const formatScheduledTimeDisplay = (scheduledTime = "") => {
+  if (!scheduledTime) return "--:--";
+  const [hoursValue, minutesValue] = String(scheduledTime).split(":");
+  const hours = Number(hoursValue);
+  const minutes = Number(minutesValue);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return scheduledTime;
+
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const displayHours = hours % 12 || 12;
+  return `${displayHours}:${String(minutes).padStart(2, "0")} ${suffix}`;
+};
+
+const getScheduledDateTime = (item) => {
+  if (!item?.scheduled_date || !item?.scheduled_time) return null;
+  const dateTime = new Date(`${item.scheduled_date}T${item.scheduled_time}`);
+  return Number.isNaN(dateTime.getTime()) ? null : dateTime;
+};
+
+const formatDuration = (milliseconds) => {
+  const totalMinutes = Math.max(0, Math.round(Math.abs(milliseconds) / 60000));
+  if (totalMinutes < 1) return "now";
+
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) {
+    return `${days}d${hours > 0 ? ` ${hours}h` : ""}`;
+  }
+  if (hours > 0) {
+    return `${hours}h${minutes > 0 ? ` ${minutes}m` : ""}`;
+  }
+  return `${minutes}m`;
+};
+
+const getScheduleStatus = (item, nowMs) => {
+  const scheduledAt = getScheduledDateTime(item);
+  if (!scheduledAt) {
+    return { label: "Time not set", className: "bg-gray-100 text-gray-600" };
+  }
+
+  const diffMs = scheduledAt.getTime() - nowMs;
+  if (Math.abs(diffMs) < 60000) {
+    return { label: "Due now", className: "bg-amber-100 text-amber-700" };
+  }
+
+  if (diffMs > 0) {
+    return {
+      label: `Remaining ${formatDuration(diffMs)}`,
+      className: "bg-emerald-100 text-emerald-700",
+    };
+  }
+
+  return {
+    label: `Due ${formatDuration(diffMs)} ago`,
+    className: "bg-orange-100 text-orange-700",
+  };
+};
+
 const addDaysToDateString = (dateString, daysToAdd) => {
   const date = new Date(`${dateString}T00:00:00`);
   date.setDate(date.getDate() + daysToAdd);
@@ -139,12 +209,22 @@ function OrdersView({
   currencySymbol = "₹",
   onRefresh,
   title = "Meal Orders",
-  description = "Upcoming scheduled meals from your placed orders.",
-  emptyMessage = "No upcoming scheduled orders found.",
+  description = "Today and upcoming scheduled meals from your placed orders.",
+  emptyMessage = "No today or upcoming scheduled orders found.",
   loadingMessage = "Loading orders...",
   countLabel = "meals",
   showPlanDetails = true,
 }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 60000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   return (
     <div className="w-full max-w-3xl rounded-2xl border border-gray-100 bg-white p-5 text-gray-800 shadow-xl">
       <div className="mb-4 flex items-center justify-between gap-3">
@@ -173,34 +253,44 @@ function OrdersView({
           {groups.map((group) => (
             <div key={group.date} className="rounded-xl border border-gray-100 bg-gray-50 p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h4 className="font-semibold text-gray-900">{group.date}</h4>
+                <h4 className="font-semibold text-gray-900">{formatGroupDateLabel(group.date)}</h4>
                 <span className="text-xs font-medium text-gray-500">{group.items?.length || 0} {countLabel}</span>
               </div>
 
               <div className="space-y-2">
-                {(group.items || []).map((item, index) => (
-                  <div key={`${item.order_id}-${item.scheduled_time}-${item.item_name}-${index}`} className="rounded-lg bg-white p-3 shadow-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-gray-900">{item.item_name}</p>
-                        <p className="mt-1 text-xs text-gray-500">
-                          {showPlanDetails
-                            ? `${item.meal_slot || "Meal"} · ${item.scheduled_time || "--:--"} · Week ${item.plan_week_number || "-"}, Day ${item.plan_day_number || "-"}`
-                            : `Qty ${item.quantity || 1}${item.scheduled_time ? ` · ${item.scheduled_time}` : ""}`}
-                        </p>
-                        {item.selected_variation?.variation_name && (
+                {(group.items || []).map((item, index) => {
+                  const scheduleStatus = getScheduleStatus(item, nowMs);
+                  const scheduledTime = formatScheduledTimeDisplay(item.scheduled_time);
+
+                  return (
+                    <div key={`${item.order_id}-${item.scheduled_time}-${item.item_name}-${index}`} className="rounded-lg bg-white p-3 shadow-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium text-gray-900">{item.item_name}</p>
+                            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${scheduleStatus.className}`}>
+                              {scheduleStatus.label}
+                            </span>
+                          </div>
                           <p className="mt-1 text-xs text-gray-500">
-                            Variation: {item.selected_variation.variation_name}
+                            {showPlanDetails
+                              ? `${item.meal_slot || "Meal"} · ${scheduledTime} · Week ${item.plan_week_number || "-"}, Day ${item.plan_day_number || "-"}`
+                              : `Qty ${item.quantity || 1}${item.scheduled_time ? ` · ${scheduledTime}` : ""}`}
                           </p>
-                        )}
-                        <p className="mt-1 text-xs text-gray-400">Order ID: {item.order_id}</p>
+                          {item.selected_variation?.variation_name && (
+                            <p className="mt-1 text-xs text-gray-500">
+                              Variation: {item.selected_variation.variation_name}
+                            </p>
+                          )}
+                          <p className="mt-1 text-xs text-gray-400">Order ID: {item.order_id}</p>
+                        </div>
+                        <p className="font-semibold text-gray-900">
+                          {currencySymbol}{Number(item.total_price || 0).toFixed(2)}
+                        </p>
                       </div>
-                      <p className="font-semibold text-gray-900">
-                        {currencySymbol}{Number(item.total_price || 0).toFixed(2)}
-                      </p>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ))}
